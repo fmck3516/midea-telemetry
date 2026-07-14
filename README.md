@@ -1,6 +1,6 @@
 # midea-telemetry
 
-Arduino firmware for reading telemetry from the **diagnostic port on Midea mini-splits**, located on the outdoor inverter board. Midea sells a handheld inverter tester that plugs into this port. This project reproduces that tester with a cheap ESP32 microcontroller so you can log the same data yourself and explore the inner workings of the unit.
+Arduino firmware for reading telemetry from the **diagnostic port on Midea mini-splits**, located on the outdoor inverter board. Midea sells a handheld inverter tester that plugs into this port. This project reproduces that tester with a cheap ESP32 microcontroller so you can log the same data yourself and explore the inner workings of your unit.
 
 > ⚠️ **Safety.** The outdoor unit runs on mains voltage and can retain a dangerous charge after being unplugged. Only plug a connector into the diagnostic port if you know what you are doing. You are responsible for your own hardware and safety.
 
