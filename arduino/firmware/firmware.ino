@@ -49,7 +49,6 @@ void printBitsAsHex(uint32_t *bits) {
 }
 
 void printBytesAsHex(const uint8_t *bytes) {
-  Serial.print(" 0x");
   for (size_t i = 0; i < MESSAGE_WIDTH / 8; i++) {
     if (bytes[i] < 0x10) Serial.print('0');  // keep the leading zero
     Serial.print(bytes[i], HEX);
@@ -67,6 +66,8 @@ bool allHigh(uint32_t *bits) {
 
 void requestResponseCycle(const uint8_t *request) {
   do {
+    
+    // send request
     for (size_t byteIndex = 0; byteIndex < MESSAGE_WIDTH / 8; byteIndex++) {
       for (int bitIndex = 7; bitIndex >= 0; bitIndex--) {
         sendBit((request[byteIndex] >> bitIndex) & 1);
@@ -75,12 +76,17 @@ void requestResponseCycle(const uint8_t *request) {
     setLine(PIN_CLK, 0);
     setLine(PIN_DAT, 1);
     delay(60);
+    
+    // read response
     for (int i = 0; i < MESSAGE_WIDTH; i++) {
       responseBits[i] = readBit();
     }
     setLine(PIN_CLK, 1);
+    
+    // print request/response pair to serial
+    Serial.print("req=0x");
     printBytesAsHex(request);
-    Serial.print(" 0x");
+    Serial.print(", res=0x");
     printBitsAsHex(responseBits);
 
     if ( ! allHigh(responseBits)) {
@@ -110,13 +116,13 @@ void loop() {
       sendBit(0);
       firstIteration = false;
     }
-    static const uint8_t messages[][MESSAGE_WIDTH / 8] = {
+    static const uint8_t requests[][MESSAGE_WIDTH / 8] = {
       {0x55, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x6A},
       {0x55, 0x80, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xAA},
       {0x55, 0x40, 0x00, 0x00, 0x00, 0x00, 0xFF, 0x00, 0x00, 0xAA},
       {0x55, 0xC0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xCA},
     };
-    for (auto &msg : messages) {
-      requestResponseCycle(msg);
+    for (auto &request : requests) {
+      requestResponseCycle(request);
     }
 }
