@@ -156,6 +156,8 @@
       <option value="low">low nibble (bits 3–0)</option>
     </select>
   </label>
+  <label class="ctrl"><input type="checkbox" id="swapNib" checked> Swap nibbles (0xAB → 0xBA)</label>
+  <label class="ctrl"><input type="checkbox" id="revBits"> Reverse bits (MSB ↔ LSB)</label>
   <label class="ctrl">Hide response types with fewer than
     <input type="number" id="minCount" value="10" min="0" step="1"> responses</label>
   <label class="ctrl">Sum
@@ -247,11 +249,15 @@ function render() {
   const invert = document.getElementById('invert').checked;
   const minCount = Math.max(0, parseInt(document.getElementById('minCount').value, 10) || 0);
   const gran = document.getElementById('gran').value;   // 'byte' | 'high' | 'low'
+  const swapNib = document.getElementById('swapNib').checked;
+  const revBits = document.getElementById('revBits').checked;
   const nibbleFn = gran === 'high' ? v => (v >> 4) & 0xF
                  : gran === 'low'  ? v => v & 0xF
                  : v => v;
-  // invert (full byte) then pick the nibble; order is irrelevant since ~ commutes
-  const val = raw => nibbleFn(invert ? 255 - raw : raw);
+  const swapFn = swapNib ? v => ((v & 0xF) << 4) | ((v >> 4) & 0xF) : v => v;
+  const revFn = revBits ? v => { let r = 0; for (let i = 0; i < 8; i++) r = (r << 1) | ((v >> i) & 1); return r; } : v => v;
+  // apply in byte space (invert, reverse bits, swap nibbles) then pick the nibble
+  const val = raw => nibbleFn(swapFn(revFn(invert ? 255 - raw : raw)));
   const isNibble = gran !== 'byte';
   const granSuffix = gran === 'high' ? ' (hi)' : gran === 'low' ? ' (lo)' : '';
   const byteYMax = isNibble ? 15 : 255;
@@ -417,6 +423,8 @@ function addChart(grid, { label, color, points, yMax, yTicks, dash }) {
 // ── load ──────────────────────────────────────────────────────────────────────
 document.getElementById('invert').addEventListener('change', render);
 document.getElementById('gran').addEventListener('change', render);
+document.getElementById('swapNib').addEventListener('change', render);
+document.getElementById('revBits').addEventListener('change', render);
 document.getElementById('minCount').addEventListener('input', render);
 document.getElementById('refresh').addEventListener('click', loadFile);
 document.getElementById('resetZoom').addEventListener('click', () => {
