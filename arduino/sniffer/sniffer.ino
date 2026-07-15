@@ -23,26 +23,29 @@ void setup() {
   lstClockChange = millis();
 }
 
+// Assembles a byte from the wire bits LSB-first, matching how the ODU
+// interprets a frame (the first bit clocked is bit 0).
+static uint8_t byteFromBits(const uint32_t *bits, uint32_t byteIndex) {
+  uint8_t b = 0;
+  for (uint32_t bitIndex = 0; bitIndex < 8; bitIndex++) {
+    if (bits[byteIndex * 8 + bitIndex]) b |= 1 << bitIndex;
+  }
+  return b;
+}
+
 void printHex(uint32_t *message) {
   Serial.print("0x");
-  uint8_t nibble = 0;
-  for (uint32_t i = 0; i < 80; i++) {
-    nibble = (nibble << 1) | (message[i] ? 1 : 0);
-    if (i % 4 == 3) {
-      Serial.print(nibble, HEX);
-      nibble = 0;
-    }
+  for (uint32_t byteIndex = 0; byteIndex < 80 / 8; byteIndex++) {
+    uint8_t b = byteFromBits(message, byteIndex);
+    if (b < 0x10) Serial.print('0');  // keep the leading zero
+    Serial.print(b, HEX);
   }
 }
 
-// A request opens with the header byte 0x55, a response with 0xAA. Rebuild the
-// first byte from its bits and check for the request header.
+// Read LSB-first, a request opens with the header byte 0xAA, a response with
+// 0x55. Rebuild the first byte from its bits and check for the request header.
 boolean isRequest(uint32_t *message) {
-  uint8_t header = 0;
-  for (uint32_t i = 0; i < 8; i++) {
-    header = (header << 1) | (message[i] ? 1 : 0);
-  }
-  return header == 0x55;
+  return byteFromBits(message, 0) == 0xAA;
 }
 
 void handleMessage(uint32_t *message, uint32_t count) {

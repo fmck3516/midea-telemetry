@@ -105,12 +105,14 @@ void requestResponseCycle(const uint8_t *request) {
     printBytesAsHex(request);
     Serial.print(", res=0x");
     printBitsAsHex(responseBits);
-    // Flag a corrupted response (lost bits); the no-answer case is all-high, not
-    // a bad checksum, so leave it unannotated.
-    if ( ! allHigh(responseBits) && ! checksumValid(responseBits)) {
-      Serial.print(" // checksum error");
-    }
-    Serial.println();
+    
+    if (allHigh(responseBits)) {
+      Serial.println(", status=NO_RESPONSE_FROM_ODU");
+    } else if ( ! checksumValid(responseBits)) {
+      Serial.println(", status=CHECKSUM_ERROR");
+    } else {
+      Serial.println(", status=OK");
+    }    
 
     if ( ! allHigh(responseBits)) {
       delay(56);
