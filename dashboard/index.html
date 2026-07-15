@@ -55,6 +55,27 @@
   }
   .controls .refresh:hover { border-color: var(--accent); }
   .controls .refresh:disabled { opacity: 0.5; cursor: default; }
+  .controls select, .controls .mini {
+    padding: 4px 8px; font-size: 13px; font-family: inherit;
+    border: 0.5px solid var(--border2); border-radius: var(--radius);
+    background: var(--bg2); color: var(--text);
+  }
+  .controls .mini { cursor: pointer; }
+  .controls .mini:hover { border-color: var(--accent); }
+  .vbyte-list { flex-basis: 100%; display: flex; flex-wrap: wrap; gap: 8px; }
+  .vbyte-list:empty { display: none; }
+  .vbyte-chip {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 3px 4px 3px 10px; font-size: 12px;
+    font-family: "SF Mono","Fira Code",monospace;
+    border: 0.5px dashed var(--border2); border-radius: var(--radius);
+    background: var(--bg2); color: var(--text);
+  }
+  .vbyte-chip button {
+    border: none; background: none; color: var(--text2);
+    cursor: pointer; font-size: 15px; line-height: 1; padding: 0 3px;
+  }
+  .vbyte-chip button:hover { color: var(--text); }
 
   .type-card {
     background: var(--bg); border: 0.5px solid var(--border);
@@ -130,6 +151,12 @@
   <label class="ctrl"><input type="checkbox" id="invert"> Invert bytes (0 ↔ 255)</label>
   <label class="ctrl">Hide response types with fewer than
     <input type="number" id="minCount" value="10" min="0" step="1"> responses</label>
+  <label class="ctrl">Sum
+    <select id="vtypeA"></select> byte <select id="vbyteA"></select>
+    + <select id="vtypeB"></select> byte <select id="vbyteB"></select>
+    <button id="addVbyte" type="button" class="mini">Add</button>
+  </label>
+  <div id="vbyteList" class="vbyte-list"></div>
   <button id="resetZoom" class="refresh" title="Reset zoom on all charts" style="margin-left:auto">⤢ Reset zoom</button>
   <button id="refresh" class="refresh" title="Reload capture.txt" style="margin-left:0">↺ Refresh</button>
 </div>
@@ -152,6 +179,7 @@ const PALETTE_DARK = [
 ];
 const isDark = () => window.matchMedia('(prefers-color-scheme: dark)').matches;
 const colorForByte = i => (isDark() ? PALETTE_DARK : PALETTE)[(i - 2) % 8];
+const virtualColor = (a, b) => (isDark() ? PALETTE_DARK : PALETTE)[(a + b) % 8];
 
 const RESPONSE_BYTES = 10;   // AA(0) type(1) payload(2..8) terminator(9)
 const PLOT_BYTES = [2, 3, 4, 5, 6, 7, 8, 9];
@@ -185,6 +213,7 @@ function parse(text) {
 // ── render ────────────────────────────────────────────────────────────────────
 let PARSED = new Map();    // typeByte -> rows; set once the file is loaded
 let activeCharts = [];     // Chart instances, torn down on each re-render
+let virtualBytes = [];     // [{ta, a, tb, b}] — charts of type-ta byte[a] + type-tb byte[b]
 
 // When one chart is zoomed, apply the same time window to every other chart so
 // all bytes/types stay aligned (like a Grafana dashboard time range).
@@ -229,8 +258,7 @@ function render() {
   }
   status.style.display = 'none';
 
-  const axisColor = isDark() ? '#9e9e99' : '#888';
-  const gridColor = isDark() ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)';
+  renderVirtualSection(xform);
 
   for (const type of types) {
     const rows = PARSED.get(type);
@@ -251,81 +279,120 @@ function render() {
     dashboard.appendChild(card);
 
     for (const byteIdx of PLOT_BYTES) {
-      const vals = rows.map(r => xform(r.bytes[byteIdx]));
-      // {x: unix seconds, y: byte value} so the x axis is real time and zoom
-      // ranges map to timestamps (shared across every chart)
-      const points = rows.map((r, i) => ({ x: r.ts, y: vals[i] }));
-      const min = Math.min(...vals), max = Math.max(...vals);
-      const uniq = new Set(vals).size;
-      const color = colorForByte(byteIdx);
+      const points = rows.map(r => ({ x: r.ts, y: xform(r.bytes[byteIdx]) }));
       const label = byteIdx === 9 ? `byte ${byteIdx} (term)` : `byte ${byteIdx}`;
-
-      const panel = document.createElement('div');
-      panel.className = 'chart-panel';
-      panel.innerHTML = `
-        <div class="chart-panel-header">
-          <div class="chart-panel-swatch" style="background:${color}"></div>
-          <div class="chart-panel-title">${label}</div>
-          <div class="chart-panel-stats">
-            <div>min <span>${hex2(min)}</span></div>
-            <div>max <span>${hex2(max)}</span></div>
-            <div>uniq <span>${uniq}</span></div>
-          </div>
-        </div>
-        <div class="chart-wrap"><canvas></canvas></div>`;
-      grid.appendChild(panel);
-
-      activeCharts.push(new Chart(panel.querySelector('canvas'), {
-        type: 'line',
-        data: {
-          datasets: [{
-            data: points,
-            borderColor: color,
-            backgroundColor: color,
-            borderWidth: 1.25,
-            pointRadius: 0,
-            pointHoverRadius: 4,
-            tension: 0,
-          }],
-        },
-        options: {
-          responsive: true, maintainAspectRatio: false,
-          animation: false,
-          parsing: false,
-          plugins: {
-            legend: { display: false },
-            tooltip: {
-              callbacks: {
-                title: ctx => fmtTime(ctx[0].parsed.x),
-                label: ctx => ` ${hex2(ctx.parsed.y)}  (${ctx.parsed.y})`,
-              },
-            },
-            zoom: {
-              // drag a horizontal box to zoom the time range (Grafana-style)
-              zoom: { drag: { enabled: true }, mode: 'x', onZoomComplete: syncZoom },
-            },
-          },
-          scales: {
-            x: {
-              type: 'linear',
-              bounds: 'data',   // axis spans exactly the data range — no end padding
-              ticks: {
-                maxTicksLimit: 6, color: axisColor, font: { size: 10 },
-                callback: v => fmtTime(v),
-              },
-              grid: { color: gridColor },
-            },
-            y: {
-              min: 0, max: 255,
-              afterBuildTicks: axis => { axis.ticks = [0, 64, 128, 192, 255].map(value => ({ value })); },
-              ticks: { color: axisColor, font: { size: 10 } },
-              grid: { color: gridColor },
-            },
-          },
-        },
-      }));
+      addChart(grid, { label, color: colorForByte(byteIdx), points,
+                       yMax: 255, yTicks: [0, 64, 128, 192, 255] });
     }
   }
+}
+
+// Standalone card of virtual bytes: sum of one byte from response type A and one
+// from type B. Operands are paired by occurrence index (the Nth response of each
+// type) — responses are captured round-robin, so same-index samples line up in
+// time. The A operand supplies the x (timestamp).
+function renderVirtualSection(xform) {
+  if (!virtualBytes.length) return;
+
+  const card = document.createElement('div');
+  card.className = 'type-card';
+  card.innerHTML = `<div class="type-header"><div class="type-title">Virtual bytes</div>` +
+    `<div class="type-meta">sum of two bytes, across response types</div></div>`;
+  const grid = document.createElement('div');
+  grid.className = 'chart-grid';
+  card.appendChild(grid);
+  document.getElementById('dashboard').appendChild(card);
+
+  for (const { ta, a, tb, b } of virtualBytes) {
+    const rowsA = PARSED.get(ta), rowsB = PARSED.get(tb);
+    if (!rowsA || !rowsB) continue;
+    const n = Math.min(rowsA.length, rowsB.length);
+    const points = [];
+    for (let i = 0; i < n; i++) {
+      points.push({ x: rowsA[i].ts, y: xform(rowsA[i].bytes[a]) + xform(rowsB[i].bytes[b]) });
+    }
+    addChart(grid, {
+      label: `${hex2(ta)}[${a}] + ${hex2(tb)}[${b}]`,
+      color: virtualColor(a, b), points,
+      yMax: 510, yTicks: [0, 128, 255, 383, 510], dash: true,
+    });
+  }
+}
+
+// Build one chart panel from an array of {x: unix seconds, y: value} points and
+// track it. Real byte and virtual-sum charts both go through here.
+function addChart(grid, { label, color, points, yMax, yTicks, dash }) {
+  const axisColor = isDark() ? '#9e9e99' : '#888';
+  const gridColor = isDark() ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)';
+  const vals = points.map(p => p.y);
+  const min = Math.min(...vals), max = Math.max(...vals);
+  const uniq = new Set(vals).size;
+
+  const panel = document.createElement('div');
+  panel.className = 'chart-panel';
+  panel.innerHTML = `
+    <div class="chart-panel-header">
+      <div class="chart-panel-swatch" style="background:${color}"></div>
+      <div class="chart-panel-title">${label}</div>
+      <div class="chart-panel-stats">
+        <div>min <span>${hex2(min)}</span></div>
+        <div>max <span>${hex2(max)}</span></div>
+        <div>uniq <span>${uniq}</span></div>
+      </div>
+    </div>
+    <div class="chart-wrap"><canvas></canvas></div>`;
+  grid.appendChild(panel);
+
+  activeCharts.push(new Chart(panel.querySelector('canvas'), {
+    type: 'line',
+    data: {
+      datasets: [{
+        data: points,
+        borderColor: color,
+        backgroundColor: color,
+        borderWidth: 1.25,
+        borderDash: dash ? [4, 3] : [],
+        pointRadius: 0,
+        pointHoverRadius: 4,
+        tension: 0,
+      }],
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      animation: false,
+      parsing: false,
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          callbacks: {
+            title: ctx => fmtTime(ctx[0].parsed.x),
+            label: ctx => ` ${hex2(ctx.parsed.y)}  (${ctx.parsed.y})`,
+          },
+        },
+        zoom: {
+          // drag a horizontal box to zoom the time range (Grafana-style)
+          zoom: { drag: { enabled: true }, mode: 'x', onZoomComplete: syncZoom },
+        },
+      },
+      scales: {
+        x: {
+          type: 'linear',
+          bounds: 'data',   // axis spans exactly the data range — no end padding
+          ticks: {
+            maxTicksLimit: 6, color: axisColor, font: { size: 10 },
+            callback: v => fmtTime(v),
+          },
+          grid: { color: gridColor },
+        },
+        y: {
+          min: 0, max: yMax,
+          afterBuildTicks: axis => { axis.ticks = yTicks.map(value => ({ value })); },
+          ticks: { color: axisColor, font: { size: 10 } },
+          grid: { color: gridColor },
+        },
+      },
+    },
+  }));
 }
 
 // ── load ──────────────────────────────────────────────────────────────────────
@@ -338,13 +405,61 @@ document.getElementById('resetZoom').addEventListener('click', () => {
   syncing = false;
 });
 
+// ── virtual bytes (sum of two bytes, possibly across response types) ───────────
+function initVbyteControls() {
+  const byteOpts = PLOT_BYTES.map(i => `<option value="${i}">byte ${i}</option>`).join('');
+  const a = document.getElementById('vbyteA'), b = document.getElementById('vbyteB');
+  a.innerHTML = byteOpts; b.innerHTML = byteOpts;
+  a.value = '4'; b.value = '5';
+  document.getElementById('addVbyte').addEventListener('click', () => {
+    const v = {
+      ta: Number(document.getElementById('vtypeA').value), a: Number(a.value),
+      tb: Number(document.getElementById('vtypeB').value), b: Number(b.value),
+    };
+    if (Number.isNaN(v.ta) || Number.isNaN(v.tb)) return;   // no data loaded yet
+    if (!virtualBytes.some(x => x.ta === v.ta && x.a === v.a && x.tb === v.tb && x.b === v.b)) {
+      virtualBytes.push(v);
+      renderVbyteList();
+      render();
+    }
+  });
+}
+
+// Fill the response-type dropdowns from the loaded data, preserving any selection.
+function populateVbyteTypes() {
+  // drop one-off noise types (a corrupt read shows up as a type with 1 response)
+  const types = [...PARSED.keys()].filter(t => PARSED.get(t).length > 1).sort((x, y) => x - y);
+  const opts = types.map(t => `<option value="${t}">${hex2(t)}</option>`).join('');
+  for (const id of ['vtypeA', 'vtypeB']) {
+    const sel = document.getElementById(id);
+    const prev = sel.value;
+    sel.innerHTML = opts;
+    if (types.some(t => String(t) === prev)) sel.value = prev;
+  }
+}
+
+function renderVbyteList() {
+  const list = document.getElementById('vbyteList');
+  list.innerHTML = virtualBytes.map((v, i) =>
+    `<span class="vbyte-chip">${hex2(v.ta)}[${v.a}] + ${hex2(v.tb)}[${v.b}]` +
+    `<button data-i="${i}" title="remove">×</button></span>`
+  ).join('');
+  list.querySelectorAll('button').forEach(btn => btn.addEventListener('click', () => {
+    virtualBytes.splice(Number(btn.dataset.i), 1);
+    renderVbyteList();
+    render();
+  }));
+}
+
+initVbyteControls();
+
 function loadFile() {
   const btn = document.getElementById('refresh');
   btn.disabled = true;
   // cache-bust so a freshly captured file isn't served from the browser cache
   fetch('../data/capture.txt?t=' + Date.now())
     .then(r => { if (!r.ok) throw new Error(r.status); return r.text(); })
-    .then(text => { PARSED = parse(text); render(); })
+    .then(text => { PARSED = parse(text); populateVbyteTypes(); render(); })
     .catch(() => {
       // file:// or missing file — offer a manual picker as a fallback
       const status = document.getElementById('status');
@@ -357,7 +472,7 @@ function loadFile() {
       status.querySelector('input').addEventListener('change', e => {
         const file = e.target.files[0];
         if (!file) return;
-        file.text().then(text => { PARSED = parse(text); render(); });
+        file.text().then(text => { PARSED = parse(text); populateVbyteTypes(); render(); });
       });
     })
     .finally(() => { btn.disabled = false; });
