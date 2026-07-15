@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Midea Diagnostic Port Visualizer</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg: #ffffff; --bg2: #f5f5f4; --bg3: #eeecea;
+    --text: #1a1a18; --text2: #6b6b66;
+    --border: rgba(0,0,0,0.12); --border2: rgba(0,0,0,0.25);
+    --accent: #185FA5;
+    --radius: 8px; --radius-lg: 12px;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #1e1e1c; --bg2: #2a2a28; --bg3: #323230;
+      --text: #f0ede8; --text2: #9e9e99;
+      --border: rgba(255,255,255,0.1); --border2: rgba(255,255,255,0.2);
+      --accent: #378ADD;
+    }
+  }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    background: var(--bg3); color: var(--text);
+    min-height: 100vh; padding: 2rem 1.5rem; max-width: 1600px; margin: 0 auto;
+  }
+
+  h1 { font-size: 18px; font-weight: 500; margin-bottom: 4px; }
+  .subtitle { font-size: 13px; color: var(--text2); margin-bottom: 1.5rem; }
+  .subtitle code { font-family: "SF Mono","Fira Code",monospace; }
+
+  .type-card {
+    background: var(--bg); border: 0.5px solid var(--border);
+    border-radius: var(--radius-lg); padding: 1.25rem; margin-bottom: 1rem;
+  }
+
+  .type-header {
+    display: flex; align-items: baseline; gap: 10px; margin-bottom: 12px;
+  }
+  .type-title {
+    font-size: 15px; font-weight: 600;
+    font-family: "SF Mono","Fira Code",monospace;
+  }
+  .type-meta { font-size: 12px; color: var(--text2); }
+
+  .chart-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    gap: 12px;
+  }
+
+  .chart-panel {
+    background: var(--bg2); border: 0.5px solid var(--border);
+    border-radius: var(--radius); padding: 10px 12px;
+  }
+  .chart-panel-header {
+    display: flex; align-items: center; gap: 8px; margin-bottom: 6px;
+  }
+  .chart-panel-swatch { width: 9px; height: 9px; border-radius: 2px; flex-shrink: 0; }
+  .chart-panel-title {
+    font-size: 12px; font-weight: 500;
+    font-family: "SF Mono","Fira Code",monospace;
+  }
+  .chart-panel-stats {
+    display: flex; gap: 12px; margin-left: auto;
+    font-size: 11px; color: var(--text2);
+  }
+  .chart-panel-stats span {
+    font-family: "SF Mono","Fira Code",monospace; color: var(--text);
+  }
+  .chart-wrap { position: relative; width: 100%; height: 130px; }
+
+  .status {
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 12px; padding: 3rem 1rem; text-align: center;
+    color: var(--text2); font-size: 14px;
+    border: 0.5px dashed var(--border2); border-radius: var(--radius-lg);
+    background: var(--bg);
+  }
+  .status code {
+    font-family: "SF Mono","Fira Code",monospace; font-size: 13px;
+    background: var(--bg2); padding: 2px 6px; border-radius: 4px;
+  }
+  .status .browse {
+    padding: 6px 14px; font-size: 13px; cursor: pointer;
+    border: 0.5px solid var(--border2); border-radius: var(--radius);
+    background: var(--bg2); color: var(--text);
+  }
+  .status .browse:hover { border-color: var(--accent); }
+  .status input[type="file"] { display: none; }
+</style>
+</head>
+<body>
+
+<h1>Midea diagnostic port visualizer</h1>
+<div class="subtitle">
+  Every response byte from <code>data/capture.txt</code>, grouped by response type
+  (byte&nbsp;1) and plotted per byte index (bytes&nbsp;2–9) over the full capture.
+</div>
+
+<div id="status" class="status">
+  <div>Loading <code>../data/capture.txt</code>…</div>
+</div>
+
+<div id="dashboard"></div>
+
+<script>
+// ── palette (one stable color per byte index 2–9) ─────────────────────────────
+const PALETTE = [
+  '#185FA5', '#0F6E56', '#993C1D', '#3B6D11',
+  '#534AB7', '#993556', '#BA7517', '#A32D2D',
+];
+const PALETTE_DARK = [
+  '#378ADD', '#1D9E75', '#D85A30', '#639922',
+  '#7F77DD', '#D4537E', '#EF9F27', '#E24B4A',
+];
+const isDark = () => window.matchMedia('(prefers-color-scheme: dark)').matches;
+const colorForByte = i => (isDark() ? PALETTE_DARK : PALETTE)[(i - 2) % 8];
+
+const RESPONSE_BYTES = 10;   // AA(0) type(1) payload(2..8) terminator(9)
+const PLOT_BYTES = [2, 3, 4, 5, 6, 7, 8, 9];
+const hex2 = v => '0x' + v.toString(16).toUpperCase().padStart(2, '0');
+
+// ── parse the capture log ─────────────────────────────────────────────────────
+// Each line looks like:
+//   1784075061 req=0x558000000000000000AA, res=0xAA40000000000000C065
+// We keep the response, split it into bytes, and group by the type byte (idx 1).
+function parse(text) {
+  const byType = new Map();   // typeByte -> [{bytes:[...]}, ...]
+  for (const line of text.split('\n')) {
+    const m = line.match(/res=0x([0-9A-Fa-f]{20})\b/);
+    if (!m) continue;
+    const hex = m[1];
+    const bytes = [];
+    for (let i = 0; i < RESPONSE_BYTES; i++) bytes.push(parseInt(hex.substr(i * 2, 2), 16));
+    const type = bytes[1];
+    if (!byType.has(type)) byType.set(type, []);
+    byType.get(type).push(bytes);
+  }
+  return byType;
+}
+
+// ── render ────────────────────────────────────────────────────────────────────
+function render(byType) {
+  const dashboard = document.getElementById('dashboard');
+  const status = document.getElementById('status');
+
+  const types = [...byType.keys()].sort((a, b) => a - b);
+  const total = [...byType.values()].reduce((n, r) => n + r.length, 0);
+
+  if (!total) {
+    status.innerHTML = '<div>No responses found in the capture file.</div>';
+    return;
+  }
+  status.style.display = 'none';
+
+  const axisColor = isDark() ? '#9e9e99' : '#888';
+  const gridColor = isDark() ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)';
+
+  for (const type of types) {
+    const rows = byType.get(type);
+
+    const card = document.createElement('div');
+    card.className = 'type-card';
+
+    const header = document.createElement('div');
+    header.className = 'type-header';
+    header.innerHTML =
+      `<div class="type-title">Response ${hex2(type)}</div>` +
+      `<div class="type-meta">${rows.length.toLocaleString()} responses</div>`;
+    card.appendChild(header);
+
+    const grid = document.createElement('div');
+    grid.className = 'chart-grid';
+    card.appendChild(grid);
+    dashboard.appendChild(card);
+
+    for (const byteIdx of PLOT_BYTES) {
+      const vals = rows.map(r => r[byteIdx]);
+      const min = Math.min(...vals), max = Math.max(...vals);
+      const uniq = new Set(vals).size;
+      const color = colorForByte(byteIdx);
+      const label = byteIdx === 9 ? `byte ${byteIdx} (term)` : `byte ${byteIdx}`;
+
+      const panel = document.createElement('div');
+      panel.className = 'chart-panel';
+      panel.innerHTML = `
+        <div class="chart-panel-header">
+          <div class="chart-panel-swatch" style="background:${color}"></div>
+          <div class="chart-panel-title">${label}</div>
+          <div class="chart-panel-stats">
+            <div>min <span>${hex2(min)}</span></div>
+            <div>max <span>${hex2(max)}</span></div>
+            <div>uniq <span>${uniq}</span></div>
+          </div>
+        </div>
+        <div class="chart-wrap"><canvas></canvas></div>`;
+      grid.appendChild(panel);
+
+      new Chart(panel.querySelector('canvas'), {
+        type: 'line',
+        data: {
+          labels: vals.map((_, i) => i),
+          datasets: [{
+            data: vals,
+            borderColor: color,
+            backgroundColor: color,
+            borderWidth: 1.25,
+            pointRadius: 0,
+            pointHoverRadius: 4,
+            tension: 0,
+          }],
+        },
+        options: {
+          responsive: true, maintainAspectRatio: false,
+          animation: false,
+          plugins: {
+            legend: { display: false },
+            tooltip: {
+              callbacks: {
+                title: ctx => `response #${ctx[0].dataIndex + 1}`,
+                label: ctx => ` ${hex2(ctx.raw)}  (${ctx.raw})`,
+              },
+            },
+          },
+          scales: {
+            x: {
+              ticks: { maxTicksLimit: 6, color: axisColor, font: { size: 10 } },
+              grid: { color: gridColor },
+            },
+            y: {
+              min: 0, max: 255,
+              afterBuildTicks: axis => { axis.ticks = [0, 64, 128, 192, 255].map(value => ({ value })); },
+              ticks: { color: axisColor, font: { size: 10 } },
+              grid: { color: gridColor },
+            },
+          },
+        },
+      });
+    }
+  }
+}
+
+// ── load ──────────────────────────────────────────────────────────────────────
+fetch('../data/capture.txt')
+  .then(r => { if (!r.ok) throw new Error(r.status); return r.text(); })
+  .then(text => render(parse(text)))
+  .catch(() => {
+    // file:// or missing file — offer a manual picker as a fallback
+    const status = document.getElementById('status');
+    status.innerHTML = `
+      <div>Couldn't load <code>../data/capture.txt</code> automatically.</div>
+      <div>Serve the repo over HTTP (e.g. <code>python3 -m http.server</code>) and open
+        <code>/dashboard/</code>, or pick the file manually:</div>
+      <label class="browse">Choose capture.txt<input type="file" accept=".txt,.log"></label>`;
+    status.querySelector('input').addEventListener('change', e => {
+      const file = e.target.files[0];
+      if (!file) return;
+      file.text().then(text => render(parse(text)));
+    });
+  });
+</script>
+</body>
+</html>
