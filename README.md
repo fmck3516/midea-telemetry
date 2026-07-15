@@ -41,11 +41,11 @@ req=0xAA030000000000000053, res=0x550500000000000000A6
 req=0xAA000000000000000056, res=0x550600000000000000A5
 req=0xAA010000000000000055, res=0x5500706E6F70210000CD
 req=0xAA0200000000FF000055, res=0x550103B7B3DC00600001
-req=0xAA030000000000000053, res=0x550200000000000003A6
+req=0xAA030000000000000053, res=0x550600000000400000A5 // checksum error
 ...
 ```
 
-(An all-`F` response means the ODU did not answer.)
+An all-`F` response means the ODU did not answer. Lines that end with `// checksum error` indicate that the checksum validation failed for the response message.
 
 ### `sniffer.ino` — passive sniffer
 
