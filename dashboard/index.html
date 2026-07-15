@@ -149,6 +149,13 @@
 
 <div class="controls">
   <label class="ctrl"><input type="checkbox" id="invert"> Invert bytes (0 ↔ 255)</label>
+  <label class="ctrl">Show
+    <select id="gran">
+      <option value="byte">bytes</option>
+      <option value="high">high nibble (bits 7–4)</option>
+      <option value="low">low nibble (bits 3–0)</option>
+    </select>
+  </label>
   <label class="ctrl">Hide response types with fewer than
     <input type="number" id="minCount" value="10" min="0" step="1"> responses</label>
   <label class="ctrl">Sum
@@ -239,7 +246,16 @@ function render() {
 
   const invert = document.getElementById('invert').checked;
   const minCount = Math.max(0, parseInt(document.getElementById('minCount').value, 10) || 0);
-  const xform = v => invert ? 255 - v : v;
+  const gran = document.getElementById('gran').value;   // 'byte' | 'high' | 'low'
+  const nibbleFn = gran === 'high' ? v => (v >> 4) & 0xF
+                 : gran === 'low'  ? v => v & 0xF
+                 : v => v;
+  // invert (full byte) then pick the nibble; order is irrelevant since ~ commutes
+  const val = raw => nibbleFn(invert ? 255 - raw : raw);
+  const isNibble = gran !== 'byte';
+  const granSuffix = gran === 'high' ? ' (hi)' : gran === 'low' ? ' (lo)' : '';
+  const byteYMax = isNibble ? 15 : 255;
+  const byteYTicks = isNibble ? [0, 4, 8, 12, 15] : [0, 64, 128, 192, 255];
 
   const total = [...PARSED.values()].reduce((n, r) => n + r.length, 0);
   const types = [...PARSED.keys()]
@@ -258,7 +274,7 @@ function render() {
   }
   status.style.display = 'none';
 
-  renderVirtualSection(xform);
+  renderVirtualSection(val, isNibble, granSuffix);
 
   for (const type of types) {
     const rows = PARSED.get(type);
@@ -279,10 +295,10 @@ function render() {
     dashboard.appendChild(card);
 
     for (const byteIdx of PLOT_BYTES) {
-      const points = rows.map(r => ({ x: r.ts, y: xform(r.bytes[byteIdx]) }));
-      const label = byteIdx === 9 ? `byte ${byteIdx} (term)` : `byte ${byteIdx}`;
+      const points = rows.map(r => ({ x: r.ts, y: val(r.bytes[byteIdx]) }));
+      const label = (byteIdx === 9 ? `byte ${byteIdx} (term)` : `byte ${byteIdx}`) + granSuffix;
       addChart(grid, { label, color: colorForByte(byteIdx), points,
-                       yMax: 255, yTicks: [0, 64, 128, 192, 255] });
+                       yMax: byteYMax, yTicks: byteYTicks });
     }
   }
 }
@@ -291,7 +307,7 @@ function render() {
 // from type B. Operands are paired by occurrence index (the Nth response of each
 // type) — responses are captured round-robin, so same-index samples line up in
 // time. The A operand supplies the x (timestamp).
-function renderVirtualSection(xform) {
+function renderVirtualSection(val, isNibble, granSuffix) {
   if (!virtualBytes.length) return;
 
   const card = document.createElement('div');
@@ -303,18 +319,21 @@ function renderVirtualSection(xform) {
   card.appendChild(grid);
   document.getElementById('dashboard').appendChild(card);
 
+  const yMax = isNibble ? 30 : 510;
+  const yTicks = isNibble ? [0, 8, 15, 23, 30] : [0, 128, 255, 383, 510];
+
   for (const { ta, a, tb, b } of virtualBytes) {
     const rowsA = PARSED.get(ta), rowsB = PARSED.get(tb);
     if (!rowsA || !rowsB) continue;
     const n = Math.min(rowsA.length, rowsB.length);
     const points = [];
     for (let i = 0; i < n; i++) {
-      points.push({ x: rowsA[i].ts, y: xform(rowsA[i].bytes[a]) + xform(rowsB[i].bytes[b]) });
+      points.push({ x: rowsA[i].ts, y: val(rowsA[i].bytes[a]) + val(rowsB[i].bytes[b]) });
     }
     addChart(grid, {
-      label: `${hex2(ta)}[${a}] + ${hex2(tb)}[${b}]`,
+      label: `${hex2(ta)}[${a}] + ${hex2(tb)}[${b}]${granSuffix}`,
       color: virtualColor(a, b), points,
-      yMax: 510, yTicks: [0, 128, 255, 383, 510], dash: true,
+      yMax, yTicks, dash: true,
     });
   }
 }
@@ -397,6 +416,7 @@ function addChart(grid, { label, color, points, yMax, yTicks, dash }) {
 
 // ── load ──────────────────────────────────────────────────────────────────────
 document.getElementById('invert').addEventListener('change', render);
+document.getElementById('gran').addEventListener('change', render);
 document.getElementById('minCount').addEventListener('input', render);
 document.getElementById('refresh').addEventListener('click', loadFile);
 document.getElementById('resetZoom').addEventListener('click', () => {
