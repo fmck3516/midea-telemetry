@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Midea Diagnostic Port Visualizer</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/chartjs-plugin-zoom/2.0.1/chartjs-plugin-zoom.min.js"></script>
 <style>
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -129,7 +130,8 @@
   <label class="ctrl"><input type="checkbox" id="invert"> Invert bytes (0 ↔ 255)</label>
   <label class="ctrl">Hide response types with fewer than
     <input type="number" id="minCount" value="10" min="0" step="1"> responses</label>
-  <button id="refresh" class="refresh" title="Reload capture.txt">↺ Refresh</button>
+  <button id="resetZoom" class="refresh" title="Reset zoom on all charts" style="margin-left:auto">⤢ Reset zoom</button>
+  <button id="refresh" class="refresh" title="Reload capture.txt" style="margin-left:0">↺ Refresh</button>
 </div>
 
 <div id="status" class="status">
@@ -184,6 +186,19 @@ function parse(text) {
 let PARSED = new Map();    // typeByte -> rows; set once the file is loaded
 let activeCharts = [];     // Chart instances, torn down on each re-render
 
+// When one chart is zoomed, apply the same time window to every other chart so
+// all bytes/types stay aligned (like a Grafana dashboard time range).
+let syncing = false;
+function syncZoom({ chart }) {
+  if (syncing) return;
+  syncing = true;
+  const { min, max } = chart.scales.x;
+  for (const c of activeCharts) {
+    if (c !== chart) c.zoomScale('x', { min, max }, 'none');
+  }
+  syncing = false;
+}
+
 function render() {
   const dashboard = document.getElementById('dashboard');
   const status = document.getElementById('status');
@@ -237,7 +252,9 @@ function render() {
 
     for (const byteIdx of PLOT_BYTES) {
       const vals = rows.map(r => xform(r.bytes[byteIdx]));
-      const labels = rows.map(r => r.ts != null ? fmtTime(r.ts) : '');
+      // {x: unix seconds, y: byte value} so the x axis is real time and zoom
+      // ranges map to timestamps (shared across every chart)
+      const points = rows.map((r, i) => ({ x: r.ts, y: vals[i] }));
       const min = Math.min(...vals), max = Math.max(...vals);
       const uniq = new Set(vals).size;
       const color = colorForByte(byteIdx);
@@ -261,9 +278,8 @@ function render() {
       activeCharts.push(new Chart(panel.querySelector('canvas'), {
         type: 'line',
         data: {
-          labels,
           datasets: [{
-            data: vals,
+            data: points,
             borderColor: color,
             backgroundColor: color,
             borderWidth: 1.25,
@@ -275,18 +291,28 @@ function render() {
         options: {
           responsive: true, maintainAspectRatio: false,
           animation: false,
+          parsing: false,
           plugins: {
             legend: { display: false },
             tooltip: {
               callbacks: {
-                title: ctx => `response #${ctx[0].dataIndex + 1}` + (ctx[0].label ? ` · ${ctx[0].label}` : ''),
-                label: ctx => ` ${hex2(ctx.raw)}  (${ctx.raw})`,
+                title: ctx => fmtTime(ctx[0].parsed.x),
+                label: ctx => ` ${hex2(ctx.parsed.y)}  (${ctx.parsed.y})`,
               },
+            },
+            zoom: {
+              // drag a horizontal box to zoom the time range (Grafana-style)
+              zoom: { drag: { enabled: true }, mode: 'x', onZoomComplete: syncZoom },
             },
           },
           scales: {
             x: {
-              ticks: { maxTicksLimit: 6, color: axisColor, font: { size: 10 } },
+              type: 'linear',
+              bounds: 'data',   // axis spans exactly the data range — no end padding
+              ticks: {
+                maxTicksLimit: 6, color: axisColor, font: { size: 10 },
+                callback: v => fmtTime(v),
+              },
               grid: { color: gridColor },
             },
             y: {
@@ -306,6 +332,11 @@ function render() {
 document.getElementById('invert').addEventListener('change', render);
 document.getElementById('minCount').addEventListener('input', render);
 document.getElementById('refresh').addEventListener('click', loadFile);
+document.getElementById('resetZoom').addEventListener('click', () => {
+  syncing = true;   // avoid re-sync churn while resetting each chart
+  activeCharts.forEach(c => c.resetZoom());
+  syncing = false;
+});
 
 function loadFile() {
   const btn = document.getElementById('refresh');
