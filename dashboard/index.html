@@ -258,10 +258,7 @@ function render() {
   const revFn = revBits ? v => { let r = 0; for (let i = 0; i < 8; i++) r = (r << 1) | ((v >> i) & 1); return r; } : v => v;
   // apply in byte space (invert, reverse bits, swap nibbles) then pick the nibble
   const val = raw => nibbleFn(swapFn(revFn(invert ? 255 - raw : raw)));
-  const isNibble = gran !== 'byte';
   const granSuffix = gran === 'high' ? ' (hi)' : gran === 'low' ? ' (lo)' : '';
-  const byteYMax = isNibble ? 15 : 255;
-  const byteYTicks = isNibble ? [0, 4, 8, 12, 15] : [0, 64, 128, 192, 255];
 
   const total = [...PARSED.values()].reduce((n, r) => n + r.length, 0);
   const types = [...PARSED.keys()]
@@ -280,7 +277,7 @@ function render() {
   }
   status.style.display = 'none';
 
-  renderVirtualSection(val, isNibble, granSuffix);
+  renderVirtualSection(val, granSuffix);
 
   for (const type of types) {
     const rows = PARSED.get(type);
@@ -303,8 +300,7 @@ function render() {
     for (const byteIdx of PLOT_BYTES) {
       const points = rows.map(r => ({ x: r.ts, y: val(r.bytes[byteIdx]) }));
       const label = (byteIdx === 9 ? `byte ${byteIdx} (term)` : `byte ${byteIdx}`) + granSuffix;
-      addChart(grid, { label, color: colorForByte(byteIdx), points,
-                       yMax: byteYMax, yTicks: byteYTicks });
+      addChart(grid, { label, color: colorForByte(byteIdx), points });
     }
   }
 }
@@ -313,7 +309,7 @@ function render() {
 // from type B. Operands are paired by occurrence index (the Nth response of each
 // type) — responses are captured round-robin, so same-index samples line up in
 // time. The A operand supplies the x (timestamp).
-function renderVirtualSection(val, isNibble, granSuffix) {
+function renderVirtualSection(val, granSuffix) {
   if (!virtualBytes.length) return;
 
   const card = document.createElement('div');
@@ -325,9 +321,6 @@ function renderVirtualSection(val, isNibble, granSuffix) {
   card.appendChild(grid);
   document.getElementById('dashboard').appendChild(card);
 
-  const yMax = isNibble ? 30 : 510;
-  const yTicks = isNibble ? [0, 8, 15, 23, 30] : [0, 128, 255, 383, 510];
-
   for (const { ta, a, tb, b } of virtualBytes) {
     const rowsA = PARSED.get(ta), rowsB = PARSED.get(tb);
     if (!rowsA || !rowsB) continue;
@@ -338,20 +331,20 @@ function renderVirtualSection(val, isNibble, granSuffix) {
     }
     addChart(grid, {
       label: `${hex2(ta)}[${a}] + ${hex2(tb)}[${b}]${granSuffix}`,
-      color: virtualColor(a, b), points,
-      yMax, yTicks, dash: true,
+      color: virtualColor(a, b), points, dash: true,
     });
   }
 }
 
 // Build one chart panel from an array of {x: unix seconds, y: value} points and
 // track it. Real byte and virtual-sum charts both go through here.
-function addChart(grid, { label, color, points, yMax, yTicks, dash }) {
+function addChart(grid, { label, color, points, dash }) {
   const axisColor = isDark() ? '#9e9e99' : '#888';
   const gridColor = isDark() ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)';
   const vals = points.map(p => p.y);
   const min = Math.min(...vals), max = Math.max(...vals);
   const uniq = new Set(vals).size;
+  const yTop = Number.isFinite(max) && max > 0 ? max : 1;   // scale each chart to its own range
 
   const panel = document.createElement('div');
   panel.className = 'chart-panel';
@@ -410,9 +403,8 @@ function addChart(grid, { label, color, points, yMax, yTicks, dash }) {
           grid: { color: gridColor },
         },
         y: {
-          min: 0, max: yMax,
-          afterBuildTicks: axis => { axis.ticks = yTicks.map(value => ({ value })); },
-          ticks: { color: axisColor, font: { size: 10 } },
+          min: 0, max: yTop,
+          ticks: { color: axisColor, font: { size: 10 }, maxTicksLimit: 5 },
           grid: { color: gridColor },
         },
       },

@@ -36,16 +36,33 @@ uint8_t readBit() {
   return bit;
 }
 
-void printBitsAsHex(uint32_t *bits) {
-  uint8_t nibble = 0;
-  for (uint32_t i = 0; i < MESSAGE_WIDTH; i++) {
-    nibble = (nibble << 1) | (bits[i] ? 1 : 0);
-    if (i % 4 == 3) {
-      Serial.print(nibble, HEX);
-      nibble = 0;
-    }
+// Assembles a byte from the wire bits LSB-first, matching how the ODU
+// interprets a frame (the first bit clocked is bit 0).
+static uint8_t byteFromBits(const uint32_t *bits, size_t byteIndex) {
+  uint8_t b = 0;
+  for (int bitIndex = 0; bitIndex < 8; bitIndex++) {
+    if (bits[byteIndex * 8 + bitIndex]) b |= 1 << bitIndex;
   }
-  Serial.println();
+  return b;
+}
+
+// Prints the message as hex without a trailing newline; the caller ends the line.
+void printBitsAsHex(uint32_t *bits) {
+  for (size_t byteIndex = 0; byteIndex < MESSAGE_WIDTH / 8; byteIndex++) {
+    uint8_t b = byteFromBits(bits, byteIndex);
+    if (b < 0x10) Serial.print('0');  // keep the leading zero
+    Serial.print(b, HEX);
+  }
+}
+
+// The last byte is a checksum: with bytes read LSB-first the way the ODU does,
+// a frame is valid exactly when payload and checksum sum to zero modulo 256.
+bool checksumValid(uint32_t *bits) {
+  uint8_t sum = 0;
+  for (size_t byteIndex = 0; byteIndex < MESSAGE_WIDTH / 8; byteIndex++) {
+    sum += byteFromBits(bits, byteIndex);
+  }
+  return sum == 0;
 }
 
 void printBytesAsHex(const uint8_t *bytes) {
@@ -67,9 +84,9 @@ bool allHigh(uint32_t *bits) {
 void requestResponseCycle(const uint8_t *request) {
   do {
     
-    // send request
+    // send request, LSB-first
     for (size_t byteIndex = 0; byteIndex < MESSAGE_WIDTH / 8; byteIndex++) {
-      for (int bitIndex = 7; bitIndex >= 0; bitIndex--) {
+      for (int bitIndex = 0; bitIndex < 8; bitIndex++) {
         sendBit((request[byteIndex] >> bitIndex) & 1);
       }
     }
@@ -88,6 +105,12 @@ void requestResponseCycle(const uint8_t *request) {
     printBytesAsHex(request);
     Serial.print(", res=0x");
     printBitsAsHex(responseBits);
+    // Flag a corrupted response (lost bits); the no-answer case is all-high, not
+    // a bad checksum, so leave it unannotated.
+    if ( ! allHigh(responseBits) && ! checksumValid(responseBits)) {
+      Serial.print(" // checksum error");
+    }
+    Serial.println();
 
     if ( ! allHigh(responseBits)) {
       delay(56);
@@ -117,10 +140,10 @@ void loop() {
       firstIteration = false;
     }
     static const uint8_t requests[][MESSAGE_WIDTH / 8] = {
-      {0x55, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x6A},
-      {0x55, 0x80, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xAA},
-      {0x55, 0x40, 0x00, 0x00, 0x00, 0x00, 0xFF, 0x00, 0x00, 0xAA},
-      {0x55, 0xC0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xCA},
+      {0xAA, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x56},
+      {0xAA, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x55},
+      {0xAA, 0x02, 0x00, 0x00, 0x00, 0x00, 0xFF, 0x00, 0x00, 0x55},
+      {0xAA, 0x03, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x53},
     };
     for (auto &request : requests) {
       requestResponseCycle(request);
