@@ -1,12 +1,12 @@
 # midea-telemetry
 
-Arduino firmware for reading telemetry from the **diagnostic port on Midea mini-splits**, located on the outdoor inverter board. Midea sells a handheld inverter tester that plugs into this port. This project reproduces that tester with a cheap ESP32 microcontroller so you can log the same data yourself and explore the inner workings of your unit.
+Arduino firmware for capturing telemetry from the diagnostic port on Midea mini-splits, located on the outdoor inverter board. Midea sells a handheld inverter tester that plugs into this port. This project reproduces that tester with a cheap ESP32 microcontroller, so you can log the same data yourself and explore the inner workings of your unit.
 
 > ⚠️ **Safety.** The outdoor unit runs on mains voltage and can retain a dangerous charge after being unplugged. Only plug a connector into the diagnostic port if you know what you are doing. You are responsible for your own hardware and safety.
 
 ## The protocol
 
-I reverse-engineered the diagnostic port's protocol and wrote it up on Medium: [Reverse Engineering Midea's ODU Diagnostic Port](https://medium.com/@florian.mckee/reverse-engineering-mideas-odu-diagnostic-port-af603e159053). The sketches in this repository are based on those findings. Start there if you want to understand the message format the code implements.
+I reverse-engineered the communication between the inverter tester and the diagnostic port and wrote it up on Medium: [Reverse Engineering Midea's ODU Diagnostic Port](https://medium.com/@florian.mckee/reverse-engineering-mideas-odu-diagnostic-port-af603e159053). The sketches in this repository are based on those findings. Start there if you want to understand the protocol.
 
 ## Schematics
 
@@ -20,12 +20,16 @@ Source: [firmware.ino](arduino/firmware/firmware.ino)
 
 Emulates Midea's inverter tester: it **drives** the bus, sending diagnostic requests and logging the ODU's responses. This lets you capture telemetry **without owning the inverter tester**.
 
-The set of request messages to send is defined in the `messages` table in `loop()`. Edit it to send different requests. Each request/response cycle is printed to serial as the request bytes followed by the response bytes, both in hex:
+The set of request messages to send is defined in the `messages` table in `loop()`. Edit it to send different requests. Each request/response pair is printed to serial:
 
 ```
- 0x5500000000000000006A 0x................
- 0x558000000000000000AA 0x................
- ...
+req=0x5500000000000000006A, res=0xFFFFFFFFFFFFFFFFFFFF
+req=0x5500000000000000006A, res=0xFFFFFFFFFFFFFFFFFFFF
+req=0x5500000000000000006A, res=0xFFFFFFFFFFFFFFFFFFFF
+req=0x5500000000000000006A, res=0xAA6000000000000000A5
+req=0x558000000000000000AA, res=0xAA00F636B6CE940000E3
+req=0x554000000000FF0000AA, res=0xAA80C05DCD3B0006007F
+...
 ```
 
 (An all-`F` response means the ODU did not answer.)
@@ -34,12 +38,24 @@ The set of request messages to send is defined in the `messages` table in `loop(
 
 Source: [sniffer.ino](arduino/sniffer/sniffer.ino)
 
-Passively **listens** on the bus while the **inverter tester is plugged in**, decoding the request/response cycles between the tester and the ODU. Useful for reverse-engineering the protocol. Each request/response cycle is printed to serial as the request bytes followed by the response bytes, both in hex:
+Passively **listens** on the bus while the **inverter tester is plugged in**, decoding the request/response cycles between the tester and the ODU. Useful for reverse-engineering the protocol. Each request/response pair is printed to serial:
 
 ```
-5500000000000000006A	 80
-558000000000000000AA	 84
+req=0x5500000000000000006A, res=0xFFFFFFFFFFFFFFFFFFFF
+req=0x5500000000000000006A, res=0xFFFFFFFFFFFFFFFFFFFF
+req=0x5500000000000000006A, res=0xFFFFFFFFFFFFFFFFFFFF
+req=0x5500000000000000006A, res=0xAA6000000000000000A5
+req=0x558000000000000000AA, res=0xAA00F636B6CE940000E3
+req=0x554000000000FF0000AA, res=0xAA80C05DCD3B0006007F
+req=                      , res=                       
 ...
+```
+
+Note: On my ESP32-C3, I regularly see messages that don't decode fully — some bits are lost when loop() isn't called fast enough. There are ways around this, but I prefer to keep the sketch simple, and I can still capture enough data for analysis (even if it takes a couple of tries).
+
+When a request or response fails to decode, you'll see a line like:
+```
+req=                      , res=                       
 ```
 
 ## Building & flashing
