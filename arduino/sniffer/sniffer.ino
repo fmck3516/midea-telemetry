@@ -3,6 +3,8 @@
 #define PIN_CLK D2
 #define PIN_DAT D1
 
+#define MESSAGE_WIDTH 80
+
 uint32_t dataDuringClockChange[84];
 uint32_t dataDuringClockChangePointer = 0;
 uint32_t clockLevel;
@@ -23,6 +25,15 @@ void setup() {
   lstClockChange = millis();
 }
 
+bool allHigh(uint32_t *bits) {
+  for (uint32_t i = 0; i < MESSAGE_WIDTH; i++) {
+    if (bits[i] == 0) {
+      return false;
+    }
+  }
+  return true;
+}
+
 // Assembles a byte from the wire bits LSB-first, matching how the ODU
 // interprets a frame (the first bit clocked is bit 0).
 static uint8_t byteFromBits(const uint32_t *bits, uint32_t byteIndex) {
@@ -31,6 +42,16 @@ static uint8_t byteFromBits(const uint32_t *bits, uint32_t byteIndex) {
     if (bits[byteIndex * 8 + bitIndex]) b |= 1 << bitIndex;
   }
   return b;
+}
+
+// The last byte is a checksum: with bytes read LSB-first the way the ODU does,
+// a frame is valid exactly when payload and checksum sum to zero modulo 256.
+bool checksumValid(uint32_t *bits) {
+  uint8_t sum = 0;
+  for (size_t byteIndex = 0; byteIndex < MESSAGE_WIDTH / 8; byteIndex++) {
+    sum += byteFromBits(bits, byteIndex);
+  }
+  return sum == 0;
 }
 
 void printHex(uint32_t *message) {
@@ -61,7 +82,13 @@ void handleMessage(uint32_t *message, uint32_t count) {
   printHex(request);
   Serial.print(", res=");
   printHex(message);
-  Serial.println();
+  if (allHigh(message)) {
+      Serial.println(", status=NO_RESPONSE_FROM_ODU");
+    } else if ( ! checksumValid(request) || ! checksumValid(message)) {
+      Serial.println(", status=CHECKSUM_ERROR");
+    } else {
+      Serial.println(", status=OK");
+    }
 }
 
 void loop() {
@@ -112,8 +139,7 @@ void loop() {
     } else {
       
       // incomplete message
-      Serial.println(String("req=                      , res=                       (discarded partial message with ") + ((clockChanges - 1) / 2) +  String(" bits)"));
-
+      Serial.println("req=                      , res=                      , status=INCOMPLETE");
 
     }
 

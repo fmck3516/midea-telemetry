@@ -52,13 +52,22 @@ Source: [sniffer.ino](arduino/sniffer/sniffer.ino)
 Passively **listens** on the bus while the **inverter tester is plugged in**, decoding the request/response cycles between the tester and the ODU. Useful for reverse-engineering the protocol. Each request/response pair is printed to serial:
 
 ```
-req=0x5500000000000000006A, res=0xFFFFFFFFFFFFFFFFFFFF
-req=0x5500000000000000006A, res=0xFFFFFFFFFFFFFFFFFFFF
-req=0x5500000000000000006A, res=0xFFFFFFFFFFFFFFFFFFFF
-req=0x5500000000000000006A, res=0xAA6000000000000000A5
-req=0x558000000000000000AA, res=0xAA00F636B6CE940000E3
-req=0x554000000000FF0000AA, res=0xAA80C05DCD3B0006007F
-req=                      , res=                       
+req=0xAA010000000000000055, res=0xA00A0000000000000060, status=CHECKSUM_ERROR
+req=0xAA010000000000000055, res=0xFFFFFFFFFFFFFFFFFFFF, status=NO_RESPONSE_FROM_ODU
+req=0xAA000000000000000056, res=0xFFFFFFFFFFFFFFFFFFFF, status=NO_RESPONSE_FROM_ODU
+req=0xAA000000000000000056, res=0x55030000160EAB0000D9, status=OK
+req=0xAA010000000000000055, res=0x55040000000000292955, status=OK
+req=0xAA0200000000FF000055, res=0x55006C467671431F03AD, status=OK
+req=0xAA030000000000000053, res=0x550127AEB3E7006002D9, status=OK
+req=                      , res=                      , status=INCOMPLETE
+req=0xAA030000000000000053, res=0x55022928000000000157, status=OK
+req=0xAA010000000000000055, res=0x55030000160EAA0000DA, status=OK
+req=0xAA0200000000FF000055, res=0x55040000000000292955, status=OK
+req=0xAA030000000000000053, res=0x55056100000000000045, status=OK
+req=0xAA000000000000000056, res=0x550600000000000000A5, status=OK
+req=0xAA010000000000000055, res=0x55006C467671431F03AD, status=OK
+req=0xAA0200000000FF000055, res=0x550127ABB3E7006002DC, status=OK
+
 ...
 ```
 
@@ -66,7 +75,7 @@ Note: On my ESP32-C3, I regularly see messages that don't decode fully — some 
 
 When a request or response fails to decode, you'll see a line like:
 ```
-req=                      , res=                       
+req=                      , res=                      , status=INCOMPLETE          
 ```
 
 ## Building & flashing
