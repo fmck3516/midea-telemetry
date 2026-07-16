@@ -4,3 +4,4 @@
 *.lck
 .history
 download.sh
+.claude

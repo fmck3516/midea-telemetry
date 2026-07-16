@@ -60,23 +60,6 @@
     border: 0.5px solid var(--border2); border-radius: var(--radius);
     background: var(--bg2); color: var(--text);
   }
-  .controls .mini { cursor: pointer; }
-  .controls .mini:hover { border-color: var(--accent); }
-  .vbyte-list { flex-basis: 100%; display: flex; flex-wrap: wrap; gap: 8px; }
-  .vbyte-list:empty { display: none; }
-  .vbyte-chip {
-    display: inline-flex; align-items: center; gap: 6px;
-    padding: 3px 4px 3px 10px; font-size: 12px;
-    font-family: "SF Mono","Fira Code",monospace;
-    border: 0.5px dashed var(--border2); border-radius: var(--radius);
-    background: var(--bg2); color: var(--text);
-  }
-  .vbyte-chip button {
-    border: none; background: none; color: var(--text2);
-    cursor: pointer; font-size: 15px; line-height: 1; padding: 0 3px;
-  }
-  .vbyte-chip button:hover { color: var(--text); }
-
   .type-card {
     background: var(--bg); border: 0.5px solid var(--border);
     border-radius: var(--radius-lg); padding: 1.25rem; margin-bottom: 1rem;
@@ -143,12 +126,11 @@
 
 <h1>Midea diagnostic port visualizer</h1>
 <div class="subtitle">
-  Every response byte from <code>data/capture.txt</code>, grouped by response type
+  Every response byte from the selected capture file, grouped by response type
   (byte&nbsp;1) and plotted per byte index (bytes&nbsp;2–9) over the full capture.
 </div>
 
 <div class="controls">
-  <label class="ctrl"><input type="checkbox" id="invert"> Invert bytes (0 ↔ 255)</label>
   <label class="ctrl">Show
     <select id="gran">
       <option value="byte">bytes</option>
@@ -156,22 +138,15 @@
       <option value="low">low nibble (bits 3–0)</option>
     </select>
   </label>
-  <label class="ctrl"><input type="checkbox" id="swapNib" checked> Swap nibbles (0xAB → 0xBA)</label>
-  <label class="ctrl"><input type="checkbox" id="revBits"> Reverse bits (MSB ↔ LSB)</label>
   <label class="ctrl">Hide response types with fewer than
     <input type="number" id="minCount" value="10" min="0" step="1"> responses</label>
-  <label class="ctrl">Sum
-    <select id="vtypeA"></select> byte <select id="vbyteA"></select>
-    + <select id="vtypeB"></select> byte <select id="vbyteB"></select>
-    <button id="addVbyte" type="button" class="mini">Add</button>
-  </label>
-  <div id="vbyteList" class="vbyte-list"></div>
-  <button id="resetZoom" class="refresh" title="Reset zoom on all charts" style="margin-left:auto">⤢ Reset zoom</button>
-  <button id="refresh" class="refresh" title="Reload capture.txt" style="margin-left:0">↺ Refresh</button>
+  <label class="refresh" style="margin-left:auto">📂 Open capture file…<input type="file" id="filePick" accept=".txt,.log" style="display:none"></label>
+  <button id="resetZoom" class="refresh" title="Reset zoom on all charts" style="margin-left:0">⤢ Reset zoom</button>
+  <button id="refresh" class="refresh" title="Re-read the selected file" style="margin-left:0">↺ Refresh</button>
 </div>
 
 <div id="status" class="status">
-  <div>Loading <code>../data/capture.txt</code>…</div>
+  <div>Pick a capture file (e.g. <code>2026-07-15.bus.txt</code>) to get started.</div>
 </div>
 
 <div id="dashboard"></div>
@@ -188,7 +163,6 @@ const PALETTE_DARK = [
 ];
 const isDark = () => window.matchMedia('(prefers-color-scheme: dark)').matches;
 const colorForByte = i => (isDark() ? PALETTE_DARK : PALETTE)[(i - 2) % 8];
-const virtualColor = (a, b) => (isDark() ? PALETTE_DARK : PALETTE)[(a + b) % 8];
 
 const RESPONSE_BYTES = 10;   // AA(0) type(1) payload(2..8) terminator(9)
 const PLOT_BYTES = [2, 3, 4, 5, 6, 7, 8, 9];
@@ -200,11 +174,13 @@ const fmtTime = ts => {
 
 // ── parse the capture log ─────────────────────────────────────────────────────
 // Each line looks like:
-//   1784075061 req=0x558000000000000000AA, res=0xAA40000000000000C065
-// We keep the response, split it into bytes, and group by the type byte (idx 1).
+//   1784160062 req=0xAA0200000000FF000055, res=0x550400000000000000A7, status=OK
+// We keep only status=OK responses, split each into bytes, and group by the
+// type byte (idx 1).
 function parse(text) {
   const byType = new Map();   // typeByte -> [{bytes:[...]}, ...]
   for (const line of text.split('\n')) {
+    if (!/,\s*status=OK\s*$/.test(line)) continue;
     const m = line.match(/res=0x([0-9A-Fa-f]{20})\b/);
     if (!m) continue;
     const hex = m[1];
@@ -222,7 +198,6 @@ function parse(text) {
 // ── render ────────────────────────────────────────────────────────────────────
 let PARSED = new Map();    // typeByte -> rows; set once the file is loaded
 let activeCharts = [];     // Chart instances, torn down on each re-render
-let virtualBytes = [];     // [{ta, a, tb, b}] — charts of type-ta byte[a] + type-tb byte[b]
 
 // When one chart is zoomed, apply the same time window to every other chart so
 // all bytes/types stay aligned (like a Grafana dashboard time range).
@@ -246,18 +221,11 @@ function render() {
   activeCharts = [];
   dashboard.innerHTML = '';
 
-  const invert = document.getElementById('invert').checked;
   const minCount = Math.max(0, parseInt(document.getElementById('minCount').value, 10) || 0);
   const gran = document.getElementById('gran').value;   // 'byte' | 'high' | 'low'
-  const swapNib = document.getElementById('swapNib').checked;
-  const revBits = document.getElementById('revBits').checked;
-  const nibbleFn = gran === 'high' ? v => (v >> 4) & 0xF
-                 : gran === 'low'  ? v => v & 0xF
-                 : v => v;
-  const swapFn = swapNib ? v => ((v & 0xF) << 4) | ((v >> 4) & 0xF) : v => v;
-  const revFn = revBits ? v => { let r = 0; for (let i = 0; i < 8; i++) r = (r << 1) | ((v >> i) & 1); return r; } : v => v;
-  // apply in byte space (invert, reverse bits, swap nibbles) then pick the nibble
-  const val = raw => nibbleFn(swapFn(revFn(invert ? 255 - raw : raw)));
+  const val = gran === 'high' ? v => (v >> 4) & 0xF
+            : gran === 'low'  ? v => v & 0xF
+            : v => v;
   const granSuffix = gran === 'high' ? ' (hi)' : gran === 'low' ? ' (lo)' : '';
 
   const total = [...PARSED.values()].reduce((n, r) => n + r.length, 0);
@@ -276,8 +244,6 @@ function render() {
     return;
   }
   status.style.display = 'none';
-
-  renderVirtualSection(val, granSuffix);
 
   for (const type of types) {
     const rows = PARSED.get(type);
@@ -305,39 +271,8 @@ function render() {
   }
 }
 
-// Standalone card of virtual bytes: sum of one byte from response type A and one
-// from type B. Operands are paired by occurrence index (the Nth response of each
-// type) — responses are captured round-robin, so same-index samples line up in
-// time. The A operand supplies the x (timestamp).
-function renderVirtualSection(val, granSuffix) {
-  if (!virtualBytes.length) return;
-
-  const card = document.createElement('div');
-  card.className = 'type-card';
-  card.innerHTML = `<div class="type-header"><div class="type-title">Virtual bytes</div>` +
-    `<div class="type-meta">sum of two bytes, across response types</div></div>`;
-  const grid = document.createElement('div');
-  grid.className = 'chart-grid';
-  card.appendChild(grid);
-  document.getElementById('dashboard').appendChild(card);
-
-  for (const { ta, a, tb, b } of virtualBytes) {
-    const rowsA = PARSED.get(ta), rowsB = PARSED.get(tb);
-    if (!rowsA || !rowsB) continue;
-    const n = Math.min(rowsA.length, rowsB.length);
-    const points = [];
-    for (let i = 0; i < n; i++) {
-      points.push({ x: rowsA[i].ts, y: val(rowsA[i].bytes[a]) + val(rowsB[i].bytes[b]) });
-    }
-    addChart(grid, {
-      label: `${hex2(ta)}[${a}] + ${hex2(tb)}[${b}]${granSuffix}`,
-      color: virtualColor(a, b), points, dash: true,
-    });
-  }
-}
-
 // Build one chart panel from an array of {x: unix seconds, y: value} points and
-// track it. Real byte and virtual-sum charts both go through here.
+// track it.
 function addChart(grid, { label, color, points, dash }) {
   const axisColor = isDark() ? '#9e9e99' : '#888';
   const gridColor = isDark() ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)';
@@ -413,10 +348,7 @@ function addChart(grid, { label, color, points, dash }) {
 }
 
 // ── load ──────────────────────────────────────────────────────────────────────
-document.getElementById('invert').addEventListener('change', render);
 document.getElementById('gran').addEventListener('change', render);
-document.getElementById('swapNib').addEventListener('change', render);
-document.getElementById('revBits').addEventListener('change', render);
 document.getElementById('minCount').addEventListener('input', render);
 document.getElementById('refresh').addEventListener('click', loadFile);
 document.getElementById('resetZoom').addEventListener('click', () => {
