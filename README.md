@@ -10,7 +10,7 @@ I reverse-engineered the communication between the inverter tester and the diagn
 
 ## Schematics
 
-t.b.d.
+![Schematics](schematics/schematics.png)
 
 ## Sketches
 

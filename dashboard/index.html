@@ -55,11 +55,19 @@
   }
   .controls .refresh:hover { border-color: var(--accent); }
   .controls .refresh:disabled { opacity: 0.5; cursor: default; }
-  .controls select, .controls .mini {
-    padding: 4px 8px; font-size: 13px; font-family: inherit;
-    border: 0.5px solid var(--border2); border-radius: var(--radius);
-    background: var(--bg2); color: var(--text);
+  .controls .seg { display: flex; }
+  .controls .seg button {
+    padding: 4px 10px; font-size: 13px; font-family: inherit; cursor: pointer;
+    border: 0.5px solid var(--border2); background: var(--bg2); color: var(--text2);
   }
+  .controls .seg button + button { border-left: none; }
+  .controls .seg button:first-child { border-radius: var(--radius) 0 0 var(--radius); }
+  .controls .seg button:last-child { border-radius: 0 var(--radius) var(--radius) 0; }
+  .controls .seg button:hover { color: var(--text); }
+  .controls .seg button.active {
+    background: var(--accent); border-color: var(--accent); color: #fff;
+  }
+
   .type-card {
     background: var(--bg); border: 0.5px solid var(--border);
     border-radius: var(--radius-lg); padding: 1.25rem; margin-bottom: 1rem;
@@ -126,23 +134,22 @@
 
 <h1>Midea diagnostic port visualizer</h1>
 <div class="subtitle">
-  Every response byte from the selected capture file, grouped by response type
+  Every response byte from <code id="fileName">the selected capture file</code>, grouped by response type
   (byte&nbsp;1) and plotted per byte index (bytes&nbsp;2–9) over the full capture.
 </div>
 
 <div class="controls">
-  <label class="ctrl">Show
-    <select id="gran">
-      <option value="byte">bytes</option>
-      <option value="high">high nibble (bits 7–4)</option>
-      <option value="low">low nibble (bits 3–0)</option>
-    </select>
-  </label>
-  <label class="ctrl">Hide response types with fewer than
-    <input type="number" id="minCount" value="10" min="0" step="1"> responses</label>
+  <label class="ctrl">Hide charts with fewer than
+    <input type="number" id="minUniq" value="2" min="0" step="1"> unique values</label>
+  <div class="ctrl">Value axis
+    <div class="seg" id="yscale">
+      <button type="button" data-mode="min-max" class="active">min–max</button>
+      <button type="button" data-mode="0-255">0–255</button>
+      <button type="button" data-mode="0-max">0–max</button>
+    </div>
+  </div>
   <label class="refresh" style="margin-left:auto">📂 Open capture file…<input type="file" id="filePick" accept=".txt,.log" style="display:none"></label>
   <button id="resetZoom" class="refresh" title="Reset zoom on all charts" style="margin-left:0">⤢ Reset zoom</button>
-  <button id="refresh" class="refresh" title="Re-read the selected file" style="margin-left:0">↺ Refresh</button>
 </div>
 
 <div id="status" class="status">
@@ -221,32 +228,26 @@ function render() {
   activeCharts = [];
   dashboard.innerHTML = '';
 
-  const minCount = Math.max(0, parseInt(document.getElementById('minCount').value, 10) || 0);
-  const gran = document.getElementById('gran').value;   // 'byte' | 'high' | 'low'
-  const val = gran === 'high' ? v => (v >> 4) & 0xF
-            : gran === 'low'  ? v => v & 0xF
-            : v => v;
-  const granSuffix = gran === 'high' ? ' (hi)' : gran === 'low' ? ' (lo)' : '';
+  const minUniq = Math.max(0, parseInt(document.getElementById('minUniq').value, 10) || 0);
 
   const total = [...PARSED.values()].reduce((n, r) => n + r.length, 0);
-  const types = [...PARSED.keys()]
-    .filter(t => PARSED.get(t).length >= minCount)
-    .sort((a, b) => a - b);
-
   if (!total) {
     status.style.display = 'flex';
     status.innerHTML = '<div>No responses found in the capture file.</div>';
     return;
   }
-  if (!types.length) {
-    status.style.display = 'flex';
-    status.innerHTML = `<div>No response types with at least ${minCount} responses.</div>`;
-    return;
-  }
-  status.style.display = 'none';
 
-  for (const type of types) {
+  let anyCharts = false;
+  for (const type of [...PARSED.keys()].sort((a, b) => a - b)) {
     const rows = PARSED.get(type);
+
+    // keep only the bytes whose chart clears the uniq threshold; a byte that
+    // never changes carries no signal
+    const bytesToPlot = PLOT_BYTES.filter(
+      b => new Set(rows.map(r => r.bytes[b])).size >= minUniq
+    );
+    if (!bytesToPlot.length) continue;
+    anyCharts = true;
 
     const card = document.createElement('div');
     card.className = 'type-card';
@@ -263,12 +264,19 @@ function render() {
     card.appendChild(grid);
     dashboard.appendChild(card);
 
-    for (const byteIdx of PLOT_BYTES) {
-      const points = rows.map(r => ({ x: r.ts, y: val(r.bytes[byteIdx]) }));
-      const label = (byteIdx === 9 ? `byte ${byteIdx} (term)` : `byte ${byteIdx}`) + granSuffix;
+    for (const byteIdx of bytesToPlot) {
+      const points = rows.map(r => ({ x: r.ts, y: r.bytes[byteIdx] }));
+      const label = byteIdx === 9 ? `byte ${byteIdx} (term)` : `byte ${byteIdx}`;
       addChart(grid, { label, color: colorForByte(byteIdx), points });
     }
   }
+
+  if (!anyCharts) {
+    status.style.display = 'flex';
+    status.innerHTML = `<div>No byte charts with at least ${minUniq} unique values.</div>`;
+    return;
+  }
+  status.style.display = 'none';
 }
 
 // Build one chart panel from an array of {x: unix seconds, y: value} points and
@@ -279,7 +287,13 @@ function addChart(grid, { label, color, points, dash }) {
   const vals = points.map(p => p.y);
   const min = Math.min(...vals), max = Math.max(...vals);
   const uniq = new Set(vals).size;
-  const yTop = Number.isFinite(max) && max > 0 ? max : 1;   // scale each chart to its own range
+  const yMin = yscaleMode.startsWith('min') ? min : 0;
+  let yMax = yscaleMode.endsWith('255') ? 255 : max;
+  if (!yscaleMode.endsWith('255')) {
+    // headroom above the data max so the trace doesn't ride the top edge
+    yMax = Math.min(255, yMax + Math.max(1, Math.ceil((yMax - yMin) * 0.05)));
+  }
+  if (!(yMax > yMin)) yMax = yMin + 1;   // keep a visible band for flat data
 
   const panel = document.createElement('div');
   panel.className = 'chart-panel';
@@ -338,7 +352,7 @@ function addChart(grid, { label, color, points, dash }) {
           grid: { color: gridColor },
         },
         y: {
-          min: 0, max: yTop,
+          min: yMin, max: yMax,
           ticks: { color: axisColor, font: { size: 10 }, maxTicksLimit: 5 },
           grid: { color: gridColor },
         },
@@ -348,89 +362,31 @@ function addChart(grid, { label, color, points, dash }) {
 }
 
 // ── load ──────────────────────────────────────────────────────────────────────
-document.getElementById('gran').addEventListener('change', render);
-document.getElementById('minCount').addEventListener('input', render);
-document.getElementById('refresh').addEventListener('click', loadFile);
+document.getElementById('minUniq').addEventListener('input', render);
+
+let yscaleMode = 'min-max';   // 'min-max' | '0-255' | '0-max'
+document.querySelectorAll('#yscale button').forEach(btn => btn.addEventListener('click', () => {
+  yscaleMode = btn.dataset.mode;
+  document.querySelectorAll('#yscale button').forEach(b => b.classList.toggle('active', b === btn));
+  render();
+}));
 document.getElementById('resetZoom').addEventListener('click', () => {
   syncing = true;   // avoid re-sync churn while resetting each chart
   activeCharts.forEach(c => c.resetZoom());
   syncing = false;
 });
 
-// ── virtual bytes (sum of two bytes, possibly across response types) ───────────
-function initVbyteControls() {
-  const byteOpts = PLOT_BYTES.map(i => `<option value="${i}">byte ${i}</option>`).join('');
-  const a = document.getElementById('vbyteA'), b = document.getElementById('vbyteB');
-  a.innerHTML = byteOpts; b.innerHTML = byteOpts;
-  a.value = '4'; b.value = '5';
-  document.getElementById('addVbyte').addEventListener('click', () => {
-    const v = {
-      ta: Number(document.getElementById('vtypeA').value), a: Number(a.value),
-      tb: Number(document.getElementById('vtypeB').value), b: Number(b.value),
-    };
-    if (Number.isNaN(v.ta) || Number.isNaN(v.tb)) return;   // no data loaded yet
-    if (!virtualBytes.some(x => x.ta === v.ta && x.a === v.a && x.tb === v.tb && x.b === v.b)) {
-      virtualBytes.push(v);
-      renderVbyteList();
+document.getElementById('filePick').addEventListener('change', e => {
+  const file = e.target.files[0];
+  if (file) {
+    file.text().then(text => {
+      document.getElementById('fileName').textContent = file.name;
+      PARSED = parse(text);
       render();
-    }
-  });
-}
-
-// Fill the response-type dropdowns from the loaded data, preserving any selection.
-function populateVbyteTypes() {
-  // drop one-off noise types (a corrupt read shows up as a type with 1 response)
-  const types = [...PARSED.keys()].filter(t => PARSED.get(t).length > 1).sort((x, y) => x - y);
-  const opts = types.map(t => `<option value="${t}">${hex2(t)}</option>`).join('');
-  for (const id of ['vtypeA', 'vtypeB']) {
-    const sel = document.getElementById(id);
-    const prev = sel.value;
-    sel.innerHTML = opts;
-    if (types.some(t => String(t) === prev)) sel.value = prev;
+    });
   }
-}
-
-function renderVbyteList() {
-  const list = document.getElementById('vbyteList');
-  list.innerHTML = virtualBytes.map((v, i) =>
-    `<span class="vbyte-chip">${hex2(v.ta)}[${v.a}] + ${hex2(v.tb)}[${v.b}]` +
-    `<button data-i="${i}" title="remove">×</button></span>`
-  ).join('');
-  list.querySelectorAll('button').forEach(btn => btn.addEventListener('click', () => {
-    virtualBytes.splice(Number(btn.dataset.i), 1);
-    renderVbyteList();
-    render();
-  }));
-}
-
-initVbyteControls();
-
-function loadFile() {
-  const btn = document.getElementById('refresh');
-  btn.disabled = true;
-  // cache-bust so a freshly captured file isn't served from the browser cache
-  fetch('../data/capture.txt?t=' + Date.now())
-    .then(r => { if (!r.ok) throw new Error(r.status); return r.text(); })
-    .then(text => { PARSED = parse(text); populateVbyteTypes(); render(); })
-    .catch(() => {
-      // file:// or missing file — offer a manual picker as a fallback
-      const status = document.getElementById('status');
-      status.style.display = 'flex';
-      status.innerHTML = `
-        <div>Couldn't load <code>../data/capture.txt</code> automatically.</div>
-        <div>Serve the repo over HTTP (e.g. <code>python3 -m http.server</code>) and open
-          <code>/dashboard/</code>, or pick the file manually:</div>
-        <label class="browse">Choose capture.txt<input type="file" accept=".txt,.log"></label>`;
-      status.querySelector('input').addEventListener('change', e => {
-        const file = e.target.files[0];
-        if (!file) return;
-        file.text().then(text => { PARSED = parse(text); populateVbyteTypes(); render(); });
-      });
-    })
-    .finally(() => { btn.disabled = false; });
-}
-
-loadFile();
+  e.target.value = '';   // allow re-picking the same file
+});
 </script>
 </body>
 </html>
