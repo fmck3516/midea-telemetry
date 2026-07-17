@@ -83,21 +83,21 @@ Note: I initially used an ESP32C3 and regularly encountered messages that don't 
 
 Emulates the **ODU**: it waits for the inverter tester to clock out a request, then answers with a configurable response frame. By changing individual response bytes and watching what changes on the tester's display, you can map each byte to a display field and work out the conversion between raw byte and displayed value.
 
-The seven response payloads (bytes 1–9 of each frame) are defined in the `responsePayloads` table at the top of the sketch. The checksum (byte 10) is always generated automatically, so any payload byte can be changed freely.
+The seven response payloads (bytes 0–8 of each frame) are defined in the `responsePayloads` table at the top of the sketch. The checksum (byte 9) is always generated automatically, so any payload byte can be changed freely.
 
 Payloads can also be changed **at runtime over USB serial** — no reflashing between experiments:
 
 ```
 show                     print all response frames (checksum included)
-set <slot> <18 hex>      replace bytes 1-9 of a frame, e.g. set 2 55022C2A0000000001
-poke <slot> <byte> <hex> change a single byte (1-9),  e.g. poke 2 3 2B
+set <slot> <18 hex>      replace bytes 0-8 of a frame, e.g. set 2 55022C2A0000000001
+poke <slot> <byte> <hex> change a single byte (0-8),  e.g. poke 2 2 2B
 ```
 
 A typical session — bump one byte, watch the tester display:
 
 ```
 2: 0x55022C2A000000000152
-> poke 2 3 2B
+> poke 2 2 2B
 2: 0x55022B2A000000000153
 ```
 
