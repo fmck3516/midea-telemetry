@@ -29,7 +29,7 @@ BOM:
 
 The assembled prototype:
 
-<img src="image/prototype.png" width="400">
+<img src="images/prototype.png" width="400">
 
 ## Sketches
 
