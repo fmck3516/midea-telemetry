@@ -13,7 +13,7 @@ Example: The prototype connected to the inverter tester and diagnostic bus to sn
 
 Initial tests indicate that this is a robust way to extract telemetry data from my mini-splits:
 
-<img src="images/dashboard.png" width="400">
+<img src="images/dashboard.png" width="800">
 
 > ⚠️ **Safety.** The outdoor unit runs on mains voltage and can retain a dangerous charge after being unplugged. Only plug a connector into the diagnostic port if you know what you are doing. You are responsible for your own hardware and safety.
 
