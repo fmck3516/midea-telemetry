@@ -17,7 +17,7 @@ uint32_t clockChanges = 0;
 uint32_t request[80];
 
 void setup() {
-  Serial.begin(115200);
+  HWCDCSerial.begin();
   pinMode(PIN_CLK, INPUT_PULLUP);
   pinMode(PIN_DAT, INPUT_PULLUP);
   delay(2000);
@@ -55,11 +55,11 @@ bool checksumValid(uint32_t *bits) {
 }
 
 void printHex(uint32_t *message) {
-  Serial.print("0x");
+  HWCDCSerial.print("0x");
   for (uint32_t byteIndex = 0; byteIndex < 80 / 8; byteIndex++) {
     uint8_t b = byteFromBits(message, byteIndex);
-    if (b < 0x10) Serial.print('0');  // keep the leading zero
-    Serial.print(b, HEX);
+    if (b < 0x10) HWCDCSerial.print('0');  // keep the leading zero
+    HWCDCSerial.print(b, HEX);
   }
 }
 
@@ -78,16 +78,16 @@ void handleMessage(uint32_t *message, uint32_t count) {
     return;
   }
   // second message of a cycle -> the ODU's response; emit the pair
-  Serial.print("req=");
+  HWCDCSerial.print("req=");
   printHex(request);
-  Serial.print(", res=");
+  HWCDCSerial.print(", res=");
   printHex(message);
   if (allHigh(message)) {
-      Serial.println(", status=NO_RESPONSE_FROM_ODU");
+      HWCDCSerial.println(", status=NO_RESPONSE_FROM_ODU");
     } else if ( ! checksumValid(request) || ! checksumValid(message)) {
-      Serial.println(", status=CHECKSUM_ERROR");
+      HWCDCSerial.println(", status=CHECKSUM_ERROR");
     } else {
-      Serial.println(", status=OK");
+      HWCDCSerial.println(", status=OK");
     }
 }
 
@@ -139,7 +139,7 @@ void loop() {
     } else {
       
       // incomplete message
-      Serial.println("req=                      , res=                      , status=INCOMPLETE");
+      HWCDCSerial.println("req=                      , res=                      , status=INCOMPLETE");
 
     }
 

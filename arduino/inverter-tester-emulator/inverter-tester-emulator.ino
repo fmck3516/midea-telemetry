@@ -50,8 +50,8 @@ static uint8_t byteFromBits(const uint32_t *bits, size_t byteIndex) {
 void printBitsAsHex(uint32_t *bits) {
   for (size_t byteIndex = 0; byteIndex < MESSAGE_WIDTH / 8; byteIndex++) {
     uint8_t b = byteFromBits(bits, byteIndex);
-    if (b < 0x10) Serial.print('0');  // keep the leading zero
-    Serial.print(b, HEX);
+    if (b < 0x10) HWCDCSerial.print('0');  // keep the leading zero
+    HWCDCSerial.print(b, HEX);
   }
 }
 
@@ -67,8 +67,8 @@ bool checksumValid(uint32_t *bits) {
 
 void printBytesAsHex(const uint8_t *bytes) {
   for (size_t i = 0; i < MESSAGE_WIDTH / 8; i++) {
-    if (bytes[i] < 0x10) Serial.print('0');  // keep the leading zero
-    Serial.print(bytes[i], HEX);
+    if (bytes[i] < 0x10) HWCDCSerial.print('0');  // keep the leading zero
+    HWCDCSerial.print(bytes[i], HEX);
   }
 }
 
@@ -101,17 +101,17 @@ void requestResponseCycle(const uint8_t *request) {
     setLine(PIN_CLK, 1);
     
     // print request/response pair to serial
-    Serial.print("req=0x");
+    HWCDCSerial.print("req=0x");
     printBytesAsHex(request);
-    Serial.print(", res=0x");
+    HWCDCSerial.print(", res=0x");
     printBitsAsHex(responseBits);
     
     if (allHigh(responseBits)) {
-      Serial.println(", status=NO_RESPONSE_FROM_ODU");
+      HWCDCSerial.println(", status=NO_RESPONSE_FROM_ODU");
     } else if ( ! checksumValid(responseBits)) {
-      Serial.println(", status=CHECKSUM_ERROR");
+      HWCDCSerial.println(", status=CHECKSUM_ERROR");
     } else {
-      Serial.println(", status=OK");
+      HWCDCSerial.println(", status=OK");
     }    
 
     if ( ! allHigh(responseBits)) {
@@ -123,7 +123,7 @@ void requestResponseCycle(const uint8_t *request) {
 }
 
 void setup() {
-  Serial.begin(115200);
+  HWCDCSerial.begin();
   delay(5000);
 }
 

@@ -1,6 +1,6 @@
 # midea-telemetry
 
-Arduino firmware for capturing telemetry from the diagnostic port on Midea mini-splits, located on the outdoor inverter board. Midea sells a handheld inverter tester that plugs into this port. This project reproduces that tester with a cheap ESP32 microcontroller, so you can log the same data yourself and explore the inner workings of your unit.
+Arduino firmware for capturing telemetry from the diagnostic port on Midea mini-splits, located on the outdoor inverter board. Midea sells a handheld inverter tester that plugs into this port. This project reproduces that tester with a cheap ESP32S3 microcontroller, so you can log the same data yourself and explore the inner workings of your unit.
 
 > ⚠️ **Safety.** The outdoor unit runs on mains voltage and can retain a dangerous charge after being unplugged. Only plug a connector into the diagnostic port if you know what you are doing. You are responsible for your own hardware and safety.
 
@@ -16,7 +16,7 @@ The only thing you need to connect an ESP32 to the diagnostic port is a level sh
 
 BOM:
 - [3.3V-5V Level Shifter](https://www.amazon.com/dp/B07F7W91LC)
-- [XIAO ESP32C3](https://www.amazon.com/dp/B0B94JZ2YF)
+- [XIAO ESP32S3](https://www.amazon.com/dp/B0BYSB66S5)
 
 ## Sketches
 
@@ -77,19 +77,22 @@ req=0xAA0200000000FF000055, res=0x550127ABB3E7006002DC, status=OK
 ...
 ```
 
-Note: On my ESP32-C3, I regularly see messages that don't decode fully — some bits are lost when loop() isn't called fast enough. There are ways around this, but I prefer to keep the sketch simple, and I can still capture enough data for analysis (even if it takes a couple of tries).
+Note: I initially used a ESP32C3 and I regularly encountered messages that don't decode fully — some bits are lost when loop() isn't called fast enough. There are ways around this, but I prefer to keep the sketch simple, and I can still capture enough data for analysis (even if it takes a couple of tries).
 
 When a request or response fails to decode, you'll see a line like:
 ```
 req=                      , res=                      , status=INCOMPLETE          
 ```
 
+Switching to a ESP32S3 has resolved those issues for me.
+
+
 ## Building & flashing
 
-1. Install the [Arduino IDE](https://www.arduino.cc/en/software) and select your board (e.g.,  ESP32C3) via the Boards Manager.
-2. Open the sketch you want (`arduino/firmware/firmware.ino` or `arduino/sniffer/sniffer.ino`).
+1. Install the [Arduino IDE](https://www.arduino.cc/en/software) and select your board (e.g.,  ESP32S3) via the Boards Manager.
+2. Open the sketch you want.
 3. Select your board and serial port, then upload.
-4. Open the **Serial Monitor at 115200 baud** to view the captured telemetry.
+4. Open the **Serial Monitor** to view the captured telemetry.
 
 ## Status
 

@@ -1304,7 +1304,7 @@
 		(at 92.71 80.01)
 		(diameter 0)
 		(color 0 0 0 0)
-		(uuid "2e4cd1dc-1ed4-4a45-aad7-09103ba31387")
+		(uuid "36141ed3-260f-40fc-ae0d-929925caa713")
 	)
 	(junction
 		(at 83.82 80.01)
@@ -1320,7 +1320,7 @@
 	)
 	(wire
 		(pts
-			(xy 92.71 80.01) (xy 118.11 80.01)
+			(xy 92.71 80.01) (xy 120.65 80.01)
 		)
 		(stroke
 			(width 0)
@@ -1340,7 +1340,7 @@
 	)
 	(wire
 		(pts
-			(xy 118.11 60.96) (xy 118.11 80.01)
+			(xy 120.65 60.96) (xy 120.65 80.01)
 		)
 		(stroke
 			(width 0)
@@ -1380,6 +1380,16 @@
 	)
 	(wire
 		(pts
+			(xy 118.11 63.5) (xy 115.57 63.5)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "3413d6e1-9524-4af6-9f12-946cd622acee")
+	)
+	(wire
+		(pts
 			(xy 83.82 80.01) (xy 83.82 82.55)
 		)
 		(stroke
@@ -1397,6 +1407,16 @@
 			(type default)
 		)
 		(uuid "45324140-fc63-43e9-933b-b3951cade9dd")
+	)
+	(wire
+		(pts
+			(xy 118.11 77.47) (xy 118.11 63.5)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "4627e22b-a745-4135-af7e-66b531011abb")
 	)
 	(wire
 		(pts
@@ -1437,6 +1457,26 @@
 			(type default)
 		)
 		(uuid "650cbba9-f24b-4300-bdc1-957c34590be9")
+	)
+	(wire
+		(pts
+			(xy 95.25 77.47) (xy 118.11 77.47)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "6c915f71-ebc7-4a46-9b90-5492430f5e44")
+	)
+	(wire
+		(pts
+			(xy 95.25 64.77) (xy 95.25 77.47)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "7c32a9e9-81d3-4909-aeb7-bd7f0b969793")
 	)
 	(wire
 		(pts
@@ -1530,13 +1570,23 @@
 	)
 	(wire
 		(pts
-			(xy 115.57 60.96) (xy 118.11 60.96)
+			(xy 115.57 60.96) (xy 120.65 60.96)
 		)
 		(stroke
 			(width 0)
 			(type default)
 		)
 		(uuid "bc4b8059-cad5-494f-adb5-08dbb7f8a8bd")
+	)
+	(wire
+		(pts
+			(xy 90.17 64.77) (xy 95.25 64.77)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "c44cac23-d860-4e86-874a-2a1e563fe480")
 	)
 	(wire
 		(pts
@@ -1920,7 +1970,7 @@
 				)
 			)
 		)
-		(property "Value" "3.3V-5V Level Shifter"
+		(property "Value" "5V-3.3V Level Shifter"
 			(at 83.82 53.086 0)
 			(show_name no)
 			(do_not_autoplace no)
@@ -2195,7 +2245,7 @@
 				(justify left)
 			)
 		)
-		(property "Value" "XIAO ESP32C3"
+		(property "Value" "XIAO ESP32S3"
 			(at 109.982 53.086 0)
 			(show_name no)
 			(do_not_autoplace no)
