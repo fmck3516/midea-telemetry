@@ -113,8 +113,6 @@ It expects capture files with one `req=..., res=..., status=...` line per cycle,
 cat /dev/ttyACM0 | while IFS= read -r line; do echo "$(date +%s) $line"; done >> data/$(date +%F).bus.txt
 ```
 
-(`download.sh` is the helper I use to pull captures from my own logging host — adapt it to your setup or ignore it.)
-
 ## Building & flashing
 
 1. Install the [Arduino IDE](https://www.arduino.cc/en/software) and the **esp32 by Espressif Systems** boards package (3.x) via the Boards Manager.
