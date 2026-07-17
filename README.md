@@ -10,13 +10,19 @@ I reverse-engineered the communication between the inverter tester and the diagn
 
 ## Schematics
 
+The only thing you need to connect an ESP32 to the diagnostic port is a level shifter:
+
 ![Schematics](schematics/schematics.png)
+
+BOM:
+- [3.3V-5V Level Shifter](https://www.amazon.com/dp/B07F7W91LC)
+- [XIAO ESP32C3](https://www.amazon.com/dp/B0B94JZ2YF)
 
 ## Sketches
 
-### `firmware.ino` — active tester (emulator)
+### `inverter-tester-emulator.ino`
 
-Source: [firmware.ino](arduino/firmware/firmware.ino)
+Source: [inverter-tester-emulator.ino](arduino/inverter-tester-emulator/inverter-tester-emulator.ino)
 
 Emulates Midea's inverter tester: it **drives** the bus, sending diagnostic requests and logging the ODU's responses. This lets you capture telemetry **without owning the inverter tester**.
 
@@ -45,9 +51,9 @@ req=0xAA030000000000000053, res=0x55030000160BA00000E3, status=CHECKSUM_ERROR
 ...
 ```
 
-### `sniffer.ino` — passive sniffer
+### `bus-sniffer.ino`
 
-Source: [sniffer.ino](arduino/sniffer/sniffer.ino)
+Source: [bus-sniffer.ino](arduino/bus-sniffer/bus-sniffer.ino)
 
 Passively **listens** on the bus while the **inverter tester is plugged in**, decoding the request/response cycles between the tester and the ODU. Useful for reverse-engineering the protocol. Each request/response pair is printed to serial:
 
