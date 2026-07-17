@@ -2,6 +2,8 @@
 
 Arduino firmware for capturing telemetry from the diagnostic port on Midea mini-splits, located on the outdoor inverter board. Midea sells a handheld inverter tester that plugs into this port. This project reproduces that tester with a cheap ESP32S3 microcontroller, so you can log the same data yourself and explore the inner workings of your unit.
 
+<img src="images/prototype-connected.png" width="400">
+
 > ⚠️ **Safety.** The outdoor unit runs on mains voltage and can retain a dangerous charge after being unplugged. Only plug a connector into the diagnostic port if you know what you are doing. You are responsible for your own hardware and safety.
 
 ## The protocol
@@ -9,6 +11,7 @@ Arduino firmware for capturing telemetry from the diagnostic port on Midea mini-
 I reverse-engineered the communication between the inverter tester and the diagnostic port and wrote it up on Medium: [Reverse Engineering Midea's ODU Diagnostic Port](https://medium.com/@florian.mckee/reverse-engineering-mideas-odu-diagnostic-port-af603e159053). The sketches in this repository are based on those findings. Start there if you want to understand the protocol.
 
 ## Schematics
+
 
 The only thing you need to connect an ESP32 to the diagnostic port is a level shifter:
 
