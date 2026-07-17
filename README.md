@@ -19,14 +19,17 @@ I reverse-engineered the communication between the inverter tester and the diagn
 
 ## Schematics
 
-
 The only thing you need to connect an ESP32 to the diagnostic port is a level shifter:
 
-![Schematics](schematics/schematics.png)
+<img src="schematics/schematics.png" width="400">
 
 BOM:
 - [3.3V-5V Level Shifter](https://www.amazon.com/dp/B07F7W91LC)
 - [XIAO ESP32S3](https://www.amazon.com/dp/B0BYSB66S5)
+
+The assembled prototype:
+
+<img src="schematics/prototype.png" width="400">
 
 ## Sketches
 
