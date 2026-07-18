@@ -213,6 +213,7 @@ const KNOWN_FIELDS = [
   { label: 'Compressor frequency (actual)',    unit: 'Hz', type: 0x02, decode: b => b[3] },
   { label: 'Outdoor fan speed',                unit: '',   type: 0x00, decode: b => uint16(b[7], b[8]) },
   { label: 'EEV opening steps',                unit: '',   type: 0x01, decode: b => uint16(b[5], b[6]) },
+  { label: 'Indoor set-point',                 unit: '°C', type: 0x01, decode: b => (b[7] - 50) / 2 },
   { label: 'Input voltage',                    unit: 'V',  type: 0x01, decode: b => acVoltage(b[3]) },
   { label: 'Current draw',                     unit: 'A',  type: 0x01, decode: b => currentDraw(b[2]) },
 ];

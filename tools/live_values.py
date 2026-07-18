@@ -77,6 +77,8 @@ FIELDS = {
     "freq_actual":     ("Compressor frequency (actual)",    "Hz",   0x02, lambda b: b[3]),
     "fan_speed":       ("Outdoor fan speed",                "",     0x00, lambda b: uint16(b[7], b[8])),
     "eev_steps":       ("EEV opening steps",                "",     0x01, lambda b: uint16(b[5], b[6])),
+    # half-degree C steps, offset by 50 (tentative mapping)
+    "setpoint":        ("Indoor set-point",                 "°C",   0x01, lambda b: (b[7] - 50) / 2),
     "voltage":         ("Input voltage",                    "V",    0x01, lambda b: ac_voltage(b[3])),
     "current":         ("Current draw",                     "A",    0x01, lambda b: current_draw(b[2])),
 }
@@ -89,6 +91,7 @@ LAYOUT = [
     ("outdoor_coil",    "eev_steps"),
     ("discharge",       "voltage"),
     ("mode",            "current"),
+    ("setpoint",        None),
 ]
 
 
@@ -113,6 +116,8 @@ class LiveView:
                 self.values[key] = f"{value} {unit}".strip() if unit else str(value)
 
     def cell(self, key, label_width=33, value_width=10):
+        if key is None:
+            return " " * (label_width + value_width)
         label, _, _, _ = FIELDS[key]
         value = self.values.get(key, "--")
         return f"{label:<{label_width}}{value:>{value_width}}"
