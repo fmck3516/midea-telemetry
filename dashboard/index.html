@@ -88,6 +88,11 @@
     grid-template-columns: repeat(auto-fill, minmax(max(300px, calc((100% - 3 * 12px) / 4)), 1fr));
     gap: 12px;
   }
+  /* the known-bytes view mirrors the live viewer's fixed two-column layout */
+  .chart-grid.fields { grid-template-columns: repeat(2, 1fr); }
+  @media (max-width: 720px) {
+    .chart-grid.fields { grid-template-columns: 1fr; }
+  }
 
   .chart-panel {
     background: var(--bg2); border: 0.5px solid var(--border);
@@ -202,20 +207,32 @@ const acVoltage = v => Math.trunc(v * 32 / 25 + 40);
 const currentDraw = v => Math.trunc((0.117 * v + 0.92) * 100) / 100;
 const uint16 = (lo, hi) => lo | (hi << 8);
 
-const KNOWN_FIELDS = [
-  { label: 'Indoor ambient temperature',       unit: '°C', type: 0x00, decode: b => ntcTemp(b[2]) },
-  { label: 'Indoor coil temperature',          unit: '°C', type: 0x00, decode: b => ntcTemp(b[3]) },
-  { label: 'Outdoor ambient temperature',      unit: '°C', type: 0x00, decode: b => ntcTemp(b[5]) },
-  { label: 'Outdoor coil temperature',         unit: '°C', type: 0x00, decode: b => ntcTemp(b[4]) },
-  { label: 'Compressor discharge temperature', unit: '°C', type: 0x00, decode: b => dischargeTemp(b[6]) },
-  { label: 'Operating mode',                   unit: '',   type: 0x02, decode: b => b[8] },
-  { label: 'Compressor frequency (target)',    unit: 'Hz', type: 0x02, decode: b => b[2] },
-  { label: 'Compressor frequency (actual)',    unit: 'Hz', type: 0x02, decode: b => b[3] },
-  { label: 'Outdoor fan speed',                unit: '',   type: 0x00, decode: b => uint16(b[7], b[8]) },
-  { label: 'EEV opening steps',                unit: '',   type: 0x01, decode: b => uint16(b[5], b[6]) },
-  { label: 'Indoor set-point',                 unit: '°C', type: 0x01, decode: b => (b[7] - 50) / 2 },
-  { label: 'Input voltage',                    unit: 'V',  type: 0x01, decode: b => acVoltage(b[3]) },
-  { label: 'Current draw',                     unit: 'A',  type: 0x01, decode: b => currentDraw(b[2]) },
+// One entry per decoded field; color is a [light, dark] pair.
+const KNOWN_FIELDS = {
+  indoor_ambient:  { label: 'Indoor ambient temperature',       unit: '°C', type: 0x00, decode: b => ntcTemp(b[2]),        color: ['#3B6D11', '#639922'] },
+  indoor_coil:     { label: 'Indoor coil temperature',          unit: '°C', type: 0x00, decode: b => ntcTemp(b[3]),        color: ['#993C1D', '#D85A30'] },
+  outdoor_ambient: { label: 'Outdoor ambient temperature',      unit: '°C', type: 0x00, decode: b => ntcTemp(b[5]),        color: ['#185FA5', '#378ADD'] },
+  outdoor_coil:    { label: 'Outdoor coil temperature',         unit: '°C', type: 0x00, decode: b => ntcTemp(b[4]),        color: ['#534AB7', '#7F77DD'] },
+  discharge:       { label: 'Compressor discharge temperature', unit: '°C', type: 0x00, decode: b => dischargeTemp(b[6]),  color: ['#993556', '#D4537E'] },
+  mode:            { label: 'Operating mode',                   unit: '',   type: 0x02, decode: b => b[8],                 color: ['#6b6b66', '#9e9e99'] },
+  freq_target:     { label: 'Compressor frequency (target)',    unit: 'Hz', type: 0x02, decode: b => b[2],                 color: ['#BA7517', '#EF9F27'] },
+  freq_actual:     { label: 'Compressor frequency (actual)',    unit: 'Hz', type: 0x02, decode: b => b[3],                 color: ['#7F7A12', '#B5B028'] },
+  fan_speed:       { label: 'Outdoor fan speed',                unit: '',   type: 0x00, decode: b => uint16(b[7], b[8]),   color: ['#0E7490', '#22B8CF'] },
+  eev_steps:       { label: 'EEV opening steps',                unit: '',   type: 0x01, decode: b => uint16(b[5], b[6]),   color: ['#A32D2D', '#E24B4A'] },
+  setpoint:        { label: 'Indoor set-point',                 unit: '°C', type: 0x01, decode: b => (b[7] - 50) / 2,      color: ['#7D4AA0', '#B07FD6'] },
+  voltage:         { label: 'Input voltage',                    unit: 'V',  type: 0x01, decode: b => acVoltage(b[3]),      color: ['#4A6B8A', '#8FB0CE'] },
+  current:         { label: 'Current draw',                     unit: 'A',  type: 0x01, decode: b => currentDraw(b[2]),    color: ['#0F6E56', '#1D9E75'] },
+};
+
+// Two-column arrangement, mirroring tools/live_values.py.
+const FIELD_LAYOUT = [
+  ['indoor_ambient',  'freq_target'],
+  ['indoor_coil',     'freq_actual'],
+  ['outdoor_ambient', 'fan_speed'],
+  ['outdoor_coil',    'eev_steps'],
+  ['discharge',       'voltage'],
+  ['mode',            'current'],
+  ['setpoint',        null],
 ];
 const hex2 = v => '0x' + v.toString(16).toUpperCase().padStart(2, '0');
 const fmtTime = ts => {
@@ -274,6 +291,15 @@ function render() {
 
   const minUniq = Math.max(0, parseInt(document.getElementById('minUniq').value, 10) || 0);
 
+  // 0-255 only makes sense for raw bytes; hide it in the known-bytes view
+  const btn255 = document.querySelector('#yscale button[data-mode="0-255"]');
+  btn255.style.display = viewMode === 'fields' ? 'none' : '';
+  if (viewMode === 'fields' && yscaleMode === '0-255') {
+    yscaleMode = '0-max';
+    document.querySelectorAll('#yscale button').forEach(
+      b => b.classList.toggle('active', b.dataset.mode === yscaleMode));
+  }
+
   const total = [...PARSED.values()].reduce((n, r) => n + r.length, 0);
   if (!total) {
     status.style.display = 'flex';
@@ -331,7 +357,8 @@ function renderBytes(dashboard, minUniq) {
   return anyCharts;
 }
 
-// A single card with one chart per known (decoded) field.
+// A single card with one chart per known (decoded) field, laid out on a fixed
+// two-column grid. Every field is always shown, so the layout never shifts.
 function renderFields(dashboard, minUniq, total) {
   const card = document.createElement('div');
   card.className = 'type-card';
@@ -344,24 +371,26 @@ function renderFields(dashboard, minUniq, total) {
   card.appendChild(header);
 
   const grid = document.createElement('div');
-  grid.className = 'chart-grid';
+  grid.className = 'chart-grid fields';
   card.appendChild(grid);
 
+  // row-major DOM order matches the two-column grid, and degrades to a
+  // sensible order when the responsive layout stacks to one column
   let anyCharts = false;
-  KNOWN_FIELDS.forEach((field, i) => {
+  for (const key of FIELD_LAYOUT.flat()) {
+    if (!key) continue;
+    const field = KNOWN_FIELDS[key];
     const rows = PARSED.get(field.type) || [];
-    if (!rows.length) return;
-    const points = rows.map(r => ({ x: r.ts, y: field.decode(r.bytes) }));
-    if (new Set(points.map(p => p.y)).size < minUniq) return;
+    if (!rows.length) continue;
     anyCharts = true;
     addChart(grid, {
       label: field.label + (field.unit ? ` (${field.unit})` : ''),
-      color: colorForByte(2 + (i % 8)),
-      points,
+      color: field.color[isDark() ? 1 : 0],
+      points: rows.map(r => ({ x: r.ts, y: field.decode(r.bytes) })),
       unit: field.unit,
       decoded: true,
     });
-  });
+  }
 
   if (anyCharts) dashboard.appendChild(card);
   return anyCharts;
@@ -402,13 +431,22 @@ function addChart(grid, { label, color, points, dash, unit, decoded }) {
     <div class="chart-wrap"><canvas></canvas></div>`;
   grid.appendChild(panel);
 
+  createChart(panel, { color, points, dash, unit, decoded, yMin, yMax });
+  return panel;
+}
+
+function createChart(panel, { color, points, dash, unit, decoded, yMin, yMax }) {
+  const axisColor = isDark() ? '#9e9e99' : '#888';
+  const gridColor = isDark() ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)';
   activeCharts.push(new Chart(panel.querySelector('canvas'), {
     type: 'line',
     data: {
       datasets: [{
         data: points,
         borderColor: color,
-        backgroundColor: color,
+        backgroundColor: color + '30',   // translucent area fill under the trace
+        pointBackgroundColor: color,
+        fill: 'start',
         borderWidth: 1.25,
         borderDash: dash ? [4, 3] : [],
         pointRadius: 0,
