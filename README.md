@@ -90,14 +90,15 @@ Payloads can also be changed **at runtime over USB serial** — no reflashing be
 ```
 show                     print all response frames (checksum included)
 set <slot> <18 hex>      replace bytes 0-8 of a frame, e.g. set 2 55022C2A0000000001
-poke <slot> <byte> <hex> change a single byte (0-8),  e.g. poke 2 2 2B
+poke <slot> <byte> <value> change a single byte (0-8); value is decimal,
+                         or hex with a 0x prefix, e.g. poke 2 2 0x2B
 ```
 
 A typical session — bump one byte, watch the tester display:
 
 ```
 2: 0x55022C2A000000000152
-> poke 2 2 2B
+> poke 2 2 0x2B
 2: 0x55022B2A000000000153
 ```
 

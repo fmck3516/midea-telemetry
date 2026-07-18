@@ -7,15 +7,12 @@
 #define FRAME_BYTES (MESSAGE_WIDTH / 8)
 #define NUM_RESPONSES 7
 
-// Bytes 0-8 of each response frame, indexed by the request's second byte
-// (0xAA 0x00 .. -> slot 0, 0xAA 0x01 .. -> slot 1, ...). Byte 9, the
+// Bytes 1-9 of each response frame, indexed by the request's second byte
+// (0xAA 0x00 .. -> slot 0, 0xAA 0x01 .. -> slot 1, ...). Byte 10, the
 // checksum, is generated automatically whenever a frame is sent, so any
 // payload byte can be changed freely. Edit the defaults here, or change them
 // at runtime over USB serial without reflashing (type "help" in the monitor).
 uint8_t responsePayloads[NUM_RESPONSES][FRAME_BYTES - 1] = {
-
-  //             T1    T2    T3    T4
-
   {0x55, 0x00, 0x6D, 0x45, 0x76, 0x71, 0x40, 0x1F, 0x03},
   {0x55, 0x01, 0x28, 0xA7, 0xB3, 0xE8, 0x00, 0x60, 0x02},
   {0x55, 0x02, 0x2C, 0x2A, 0x00, 0x00, 0x00, 0x00, 0x01},
@@ -163,9 +160,9 @@ void printAllFrames() {
 void printHelp() {
   HWCDCSerial.println("commands:");
   HWCDCSerial.println("  show                    print all response frames (checksum included)");
-  HWCDCSerial.println("  set <slot> <18 hex>     replace bytes 0-8, e.g. set 2 55022C2A0000000001");
+  HWCDCSerial.println("  set <slot> <18 hex>     replace bytes 1-9, e.g. set 2 55022C2A0000000001");
   HWCDCSerial.println("                          (20 hex chars also accepted; the checksum is ignored)");
-  HWCDCSerial.println("  poke <slot> <byte> <hex>  change one byte (0-8), e.g. poke 2 2 2B");
+  HWCDCSerial.println("  poke <slot> <byte> <hex>  change one byte (1-9), e.g. poke 2 3 2B");
 }
 
 static int hexNibble(char c) {
@@ -207,7 +204,7 @@ void handleCommand(char *line) {
     if (slot < 0 || slot >= NUM_RESPONSES) {
       HWCDCSerial.println("err: slot must be 0-6");
     } else if ((hexLength != 18 && hexLength != 20) || !parseHexBytes(hexArg, payload, FRAME_BYTES - 1)) {
-      HWCDCSerial.println("err: expected 18 hex chars (bytes 0-8)");
+      HWCDCSerial.println("err: expected 18 hex chars (bytes 1-9)");
     } else {
       memcpy(responsePayloads[slot], payload, FRAME_BYTES - 1);
       printFrame(slot);
@@ -220,7 +217,7 @@ void handleCommand(char *line) {
     char *posArg = strtok(NULL, " ");
     char *hexArg = strtok(NULL, " ");
     if (slotArg == NULL || posArg == NULL || hexArg == NULL) {
-      HWCDCSerial.println("err: usage: poke <slot> <byte 0-8> <hex>");
+      HWCDCSerial.println("err: usage: poke <slot> <byte 1-9> <hex>");
       return;
     }
     int slot = atoi(slotArg);
@@ -228,12 +225,12 @@ void handleCommand(char *line) {
     uint8_t value;
     if (slot < 0 || slot >= NUM_RESPONSES) {
       HWCDCSerial.println("err: slot must be 0-6");
-    } else if (pos < 0 || pos > FRAME_BYTES - 2) {
-      HWCDCSerial.println("err: byte position must be 0-8");
+    } else if (pos < 1 || pos > FRAME_BYTES - 1) {
+      HWCDCSerial.println("err: byte position must be 1-9");
     } else if (strlen(hexArg) != 2 || !parseHexBytes(hexArg, &value, 1)) {
       HWCDCSerial.println("err: expected 2 hex chars");
     } else {
-      responsePayloads[slot][pos] = value;
+      responsePayloads[slot][pos - 1] = value;
       printFrame(slot);
     }
     return;
