@@ -6,3 +6,4 @@ download.sh
 .claude
 .history
 *.lck
+*.gz
