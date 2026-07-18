@@ -106,7 +106,7 @@ Tip: the two emulator sketches are exact counterparts, so you can bench-test the
 
 ## Dashboard
 
-[dashboard/index.html](dashboard/index.html) is a self-contained, browser-based visualizer for captured telemetry — no build step, just open it in a browser. Pick a capture file and it plots every response byte (bytes 2–9) over time, grouped by response type (byte 1), with synced zoom/pan across charts. Bytes that never change are hidden automatically.
+[dashboard/index.html](dashboard/index.html) is a self-contained, browser-based visualizer for captured telemetry — no build step, just open it in a browser. Pick a capture file and it plots every response byte (bytes 2–9) over time, grouped by response type (byte 1), with synced zoom/pan across charts. Bytes that never change are hidden automatically. By default it shows the twelve decoded fields ("known bytes" — temperatures, frequencies, fan speed, EEV steps, voltage, current), converted with the formulas from the article; an "all bytes" toggle switches to the raw per-byte charts.
 
 It expects capture files with one `req=..., res=..., status=...` line per cycle, prefixed with a Unix timestamp — see [data/bus.txt](data/bus.txt) for an example. A capture like that can be recorded straight from the serial port:
 

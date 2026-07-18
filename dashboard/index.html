@@ -139,6 +139,12 @@
 </div>
 
 <div class="controls">
+  <div class="ctrl">Show
+    <div class="seg" id="viewmode">
+      <button type="button" data-mode="fields" class="active">known bytes</button>
+      <button type="button" data-mode="bytes">all bytes</button>
+    </div>
+  </div>
   <label class="ctrl">Hide charts with fewer than
     <input type="number" id="minUniq" value="2" min="0" step="1"> unique values</label>
   <div class="ctrl">Value axis
@@ -173,6 +179,43 @@ const colorForByte = i => (isDark() ? PALETTE_DARK : PALETTE)[(i - 2) % 8];
 
 const RESPONSE_BYTES = 10;   // AA(0) type(1) payload(2..8) terminator(9)
 const PLOT_BYTES = [2, 3, 4, 5, 6, 7, 8, 9];
+
+// ── known fields ──────────────────────────────────────────────────────────────
+// Byte mapping and conversion formulas as documented in
+// "Reverse Engineering Midea's ODU Diagnostic Port".
+
+// Ambient/coil temperatures: NTC divider, Beta model; 0x00/0xFF are fault codes.
+const ntcTemp = v => {
+  if (v === 0) return -66.0;
+  if (v === 255) return 255.0;
+  const t = 1 / (1 / 298.15 + Math.log(0.81 * (255 - v) / v) / 4150) - 273.15;
+  return Math.round(t * 2) / 2;
+};
+// Discharge temperature: Steinhart-Hart model; 0x00 and 0xFE/0xFF are fault codes.
+const dischargeTemp = v => {
+  if (v === 0) return -48;
+  if (v >= 254) return v;
+  const L = Math.log((255 - v) / v);
+  return Math.round(1 / (2.873e-3 + 2.491e-4 * L + 9.74e-7 * L ** 3) - 273.15);
+};
+const acVoltage = v => Math.trunc(v * 32 / 25 + 40);
+const currentDraw = v => Math.trunc((0.117 * v + 0.92) * 100) / 100;
+const uint16 = (lo, hi) => lo | (hi << 8);
+
+const KNOWN_FIELDS = [
+  { label: 'Indoor ambient temperature',       unit: '°C', type: 0x00, decode: b => ntcTemp(b[2]) },
+  { label: 'Indoor coil temperature',          unit: '°C', type: 0x00, decode: b => ntcTemp(b[3]) },
+  { label: 'Outdoor ambient temperature',      unit: '°C', type: 0x00, decode: b => ntcTemp(b[5]) },
+  { label: 'Outdoor coil temperature',         unit: '°C', type: 0x00, decode: b => ntcTemp(b[4]) },
+  { label: 'Compressor discharge temperature', unit: '°C', type: 0x00, decode: b => dischargeTemp(b[6]) },
+  { label: 'Operating mode',                   unit: '',   type: 0x02, decode: b => b[8] },
+  { label: 'Compressor frequency (target)',    unit: 'Hz', type: 0x02, decode: b => b[2] },
+  { label: 'Compressor frequency (actual)',    unit: 'Hz', type: 0x02, decode: b => b[3] },
+  { label: 'Outdoor fan speed',                unit: '',   type: 0x00, decode: b => uint16(b[7], b[8]) },
+  { label: 'EEV opening steps',                unit: '',   type: 0x01, decode: b => uint16(b[5], b[6]) },
+  { label: 'Input voltage',                    unit: 'V',  type: 0x01, decode: b => acVoltage(b[3]) },
+  { label: 'Current draw',                     unit: 'A',  type: 0x01, decode: b => currentDraw(b[2]) },
+];
 const hex2 = v => '0x' + v.toString(16).toUpperCase().padStart(2, '0');
 const fmtTime = ts => {
   const d = new Date(ts * 1000), p = n => String(n).padStart(2, '0');
@@ -237,6 +280,20 @@ function render() {
     return;
   }
 
+  const anyCharts = viewMode === 'fields'
+    ? renderFields(dashboard, minUniq, total)
+    : renderBytes(dashboard, minUniq);
+
+  if (!anyCharts) {
+    status.style.display = 'flex';
+    status.innerHTML = `<div>No charts with at least ${minUniq} unique values.</div>`;
+    return;
+  }
+  status.style.display = 'none';
+}
+
+// One card per response type, one chart per raw byte.
+function renderBytes(dashboard, minUniq) {
   let anyCharts = false;
   for (const type of [...PARSED.keys()].sort((a, b) => a - b)) {
     const rows = PARSED.get(type);
@@ -270,30 +327,64 @@ function render() {
       addChart(grid, { label, color: colorForByte(byteIdx), points });
     }
   }
+  return anyCharts;
+}
 
-  if (!anyCharts) {
-    status.style.display = 'flex';
-    status.innerHTML = `<div>No byte charts with at least ${minUniq} unique values.</div>`;
-    return;
-  }
-  status.style.display = 'none';
+// A single card with one chart per known (decoded) field.
+function renderFields(dashboard, minUniq, total) {
+  const card = document.createElement('div');
+  card.className = 'type-card';
+
+  const header = document.createElement('div');
+  header.className = 'type-header';
+  header.innerHTML =
+    `<div class="type-title">Known bytes</div>` +
+    `<div class="type-meta">${total.toLocaleString()} responses</div>`;
+  card.appendChild(header);
+
+  const grid = document.createElement('div');
+  grid.className = 'chart-grid';
+  card.appendChild(grid);
+
+  let anyCharts = false;
+  KNOWN_FIELDS.forEach((field, i) => {
+    const rows = PARSED.get(field.type) || [];
+    if (!rows.length) return;
+    const points = rows.map(r => ({ x: r.ts, y: field.decode(r.bytes) }));
+    if (new Set(points.map(p => p.y)).size < minUniq) return;
+    anyCharts = true;
+    addChart(grid, {
+      label: field.label + (field.unit ? ` (${field.unit})` : ''),
+      color: colorForByte(2 + (i % 8)),
+      points,
+      unit: field.unit,
+      decoded: true,
+    });
+  });
+
+  if (anyCharts) dashboard.appendChild(card);
+  return anyCharts;
 }
 
 // Build one chart panel from an array of {x: unix seconds, y: value} points and
 // track it.
-function addChart(grid, { label, color, points, dash }) {
+function addChart(grid, { label, color, points, dash, unit, decoded }) {
   const axisColor = isDark() ? '#9e9e99' : '#888';
   const gridColor = isDark() ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)';
   const vals = points.map(p => p.y);
   const min = Math.min(...vals), max = Math.max(...vals);
   const uniq = new Set(vals).size;
+  // decoded fields aren't 8-bit values, so the 0-255 mode falls back to 0-max
+  const clamp255 = yscaleMode.endsWith('255') && !decoded;
   const yMin = yscaleMode.startsWith('min') ? min : 0;
-  let yMax = yscaleMode.endsWith('255') ? 255 : max;
-  if (!yscaleMode.endsWith('255')) {
+  let yMax = clamp255 ? 255 : max;
+  if (!clamp255) {
     // headroom above the data max so the trace doesn't ride the top edge
-    yMax = Math.min(255, yMax + Math.max(1, Math.ceil((yMax - yMin) * 0.05)));
+    yMax = yMax + Math.max(1, Math.ceil((yMax - yMin) * 0.05));
+    if (!decoded) yMax = Math.min(255, yMax);
   }
   if (!(yMax > yMin)) yMax = yMin + 1;   // keep a visible band for flat data
+  const fmtVal = decoded ? (v => String(v)) : hex2;
 
   const panel = document.createElement('div');
   panel.className = 'chart-panel';
@@ -302,8 +393,8 @@ function addChart(grid, { label, color, points, dash }) {
       <div class="chart-panel-swatch" style="background:${color}"></div>
       <div class="chart-panel-title">${label}</div>
       <div class="chart-panel-stats">
-        <div>min <span>${hex2(min)}</span></div>
-        <div>max <span>${hex2(max)}</span></div>
+        <div>min <span>${fmtVal(min)}</span></div>
+        <div>max <span>${fmtVal(max)}</span></div>
         <div>uniq <span>${uniq}</span></div>
       </div>
     </div>
@@ -333,7 +424,9 @@ function addChart(grid, { label, color, points, dash }) {
         tooltip: {
           callbacks: {
             title: ctx => fmtTime(ctx[0].parsed.x),
-            label: ctx => ` ${hex2(ctx.parsed.y)}  (${ctx.parsed.y})`,
+            label: ctx => decoded
+              ? ` ${ctx.parsed.y}${unit ? ' ' + unit : ''}`
+              : ` ${hex2(ctx.parsed.y)}  (${ctx.parsed.y})`,
           },
         },
         zoom: {
@@ -363,6 +456,13 @@ function addChart(grid, { label, color, points, dash }) {
 
 // ── load ──────────────────────────────────────────────────────────────────────
 document.getElementById('minUniq').addEventListener('input', render);
+
+let viewMode = 'fields';      // 'fields' (known bytes, decoded) | 'bytes' (all bytes, raw)
+document.querySelectorAll('#viewmode button').forEach(btn => btn.addEventListener('click', () => {
+  viewMode = btn.dataset.mode;
+  document.querySelectorAll('#viewmode button').forEach(b => b.classList.toggle('active', b === btn));
+  render();
+}));
 
 let yscaleMode = 'min-max';   // 'min-max' | '0-255' | '0-max'
 document.querySelectorAll('#yscale button').forEach(btn => btn.addEventListener('click', () => {
