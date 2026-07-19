@@ -7,3 +7,6 @@ download.sh
 .history
 *.lck
 *.gz
+__pycache__/
+*.py[cod]
+*$py.class

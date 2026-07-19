@@ -104,6 +104,28 @@ A typical session — bump one byte, watch the tester display:
 
 Tip: the two emulator sketches are exact counterparts, so you can bench-test them against each other with two boards (clock-to-clock, data-to-data, ground-to-ground) before connecting real hardware — no external pull-ups needed.
 
+## ESPHome component (Home Assistant)
+
+[components/midea_telemetry](components/midea_telemetry/) is an ESPHome external component that emulates the inverter tester and exposes all currently known telemetry fields (temperatures, compressor frequencies, fan speed, EEV steps, voltage, current, mode, set-point) as Home Assistant sensors. Same hardware as the sketches — see its [README](components/midea_telemetry/README.md) for a full example configuration.
+
+```yaml
+external_components:
+  - source: github://fmck3516/midea-telemetry
+    components: [midea_telemetry]
+
+midea_telemetry:
+  clk_pin: GPIO3   # D2 on the XIAO ESP32S3
+  dat_pin: GPIO2   # D1
+
+sensor:
+  - platform: midea_telemetry
+    outdoor_coil_temperature:
+      name: Outdoor coil temperature
+    compressor_frequency_actual:
+      name: Compressor frequency
+    # ... see components/midea_telemetry/README.md for all 13 sensors
+```
+
 ## Dashboard
 
 [dashboard/index.html](dashboard/index.html) is a self-contained, browser-based visualizer for captured telemetry — no build step, just open it in a browser. Pick a capture file and it plots every response byte (bytes 2–9) over time, grouped by response type (byte 1), with synced zoom/pan across charts. Bytes that never change are hidden automatically. By default it shows the twelve decoded fields ("known bytes" — temperatures, frequencies, fan speed, EEV steps, voltage, current), converted with the formulas from the article; an "all bytes" toggle switches to the raw per-byte charts.
