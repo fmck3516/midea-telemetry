@@ -10,7 +10,7 @@ Hardware is the same as for the Arduino sketches (ESP32 + level shifter, see the
 
 ```yaml
 esphome:
-  name: midea-odu
+  name: midea-telemetry
 
 esp32:
   board: seeed_xiao_esp32s3

@@ -10,3 +10,4 @@ download.sh
 __pycache__/
 *.py[cod]
 *$py.class
+secrets.yaml
