@@ -106,11 +106,11 @@ Tip: the two emulator sketches are exact counterparts, so you can bench-test the
 
 ## ESPHome component (Home Assistant)
 
-[components/midea_telemetry](components/midea_telemetry/) is an ESPHome external component that emulates the inverter tester and exposes all currently known telemetry fields (temperatures, compressor frequencies, fan speed, EEV steps, voltage, current, mode, set-point) as Home Assistant sensors. Same hardware as the sketches — see its [README](components/midea_telemetry/README.md) for a full example configuration.
+[midea-telemetry-esphome](https://github.com/fmck3516/midea-telemetry-esphome) is an ESPHome external component that emulates the inverter tester and exposes all currently known telemetry fields (temperatures, compressor frequencies, fan speed, EEV steps, voltage, current, mode, set-point) as Home Assistant sensors. Same hardware as the sketches — see its README for a full example configuration.
 
 ```yaml
 external_components:
-  - source: github://fmck3516/midea-telemetry
+  - source: github://fmck3516/midea-telemetry-esphome
     components: [midea_telemetry]
 
 midea_telemetry:
@@ -123,7 +123,7 @@ sensor:
       name: Outdoor coil temperature
     compressor_frequency_actual:
       name: Compressor frequency
-    # ... see components/midea_telemetry/README.md for all 13 sensors
+    # ... see the midea-telemetry-esphome README for all 13 sensors
 ```
 
 ## Dashboard
