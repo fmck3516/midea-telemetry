@@ -1,13 +1,27 @@
+# macOS
 .DS_Store
+
+# KiCad — local editor state, auto-backups, lock files
+*.kicad_prl
+*-backups/
+_autosave-*
+*.kicad_pro-bak
+*.kicad_sch-bak
+*.kicad_pcb-bak
+fp-info-cache
+*.lck
 *.FCBak
-*.lck
 .history
-download.sh
-.claude
-.history
-*.lck
-*.gz
+
+# Python
 __pycache__/
 *.py[cod]
 *$py.class
+
+# Captures and local config
+*.gz
 secrets.yaml
+download.sh
+
+# Tooling
+.claude

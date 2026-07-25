@@ -25,19 +25,22 @@ In short: the bus is a two-wire (clock + data) 5V bus. The tester drives the clo
 
 ## Hardware
 
-The only thing you need to connect an ESP32 to the diagnostic port is a level shifter:
+The only thing you need to connect an ESP32 to the diagnostic port is a level shifter. The 5V bus lines (CLK, DAT) are level-shifted to 3V3; the ODU supplies the 5V reference and the XIAO supplies the 3V3 reference. All sketches expect the clock line on **D2** and the data line on **D1** (see the `PIN_CLK` / `PIN_DAT` defines at the top of each sketch).
 
-<img src="schematics/schematics.png" width="400">
+<img src="images/schematics.png" width="400">
+
 
 BOM:
 - [3.3V-5V Level Shifter](https://www.amazon.com/dp/B07F7W91LC)
 - [XIAO ESP32S3](https://www.amazon.com/dp/B0BYSB66S5)
 
-All sketches expect the clock line on **D2** and the data line on **D1** (see the `PIN_CLK` / `PIN_DAT` defines at the top of each sketch). The KiCad project for the schematic lives in [schematics/](schematics/).
-
 The assembled prototype:
 
 <img src="images/prototype.png" width="400">
+
+An **adapter PCB** for this — a bare carrier board you solder the two connectors, the level shifter and the XIAO into — lives in the companion repo: [midea-telemetry-esphome/pcb](https://github.com/fmck3516/midea-telemetry-esphome/tree/main/pcb) (KiCad project, schematic, and orderable gerbers). Note it is **untested** — designed and rule-checked, but not yet fabricated.
+
+> ⚠️ Only the ODU side connects to your mini-split, and only through the low-voltage diagnostic port. Re-read the safety note above before plugging anything into the outdoor unit.
 
 ## Sketches
 
