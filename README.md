@@ -27,6 +27,8 @@ In short: the bus is a two-wire (clock + data) 5V bus. The tester drives the clo
 
 The only thing you need to connect an ESP32 to the diagnostic port is a level shifter. The 5V bus lines (CLK, DAT) are level-shifted to 3V3; the ODU supplies the 5V reference and the XIAO supplies the 3V3 reference. All sketches expect the clock line on **D2** and the data line on **D1** (see the `PIN_CLK` / `PIN_DAT` defines at the top of each sketch).
 
+> ⚠️ **Use a USB isolator.** The diagnostic port's ground is not referenced to earth. Whenever you connect the ESP32 to a computer over USB while it's plugged into the ODU (e.g. to flash or read the serial monitor), go through a USB isolator so the floating bus ground isn't tied to your earthed computer.
+
 <img src="images/schematics.png" width="400">
 
 
