@@ -21,6 +21,7 @@ __pycache__/
 # Captures and local config
 *.gz
 secrets.yaml
+secrets.h
 download.sh
 
 # Tooling
